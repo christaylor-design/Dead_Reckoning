@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dead Reckoning: Zombie Survival</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&display=swap');
+        
+        body {
+            background-color: #0a0a0a;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+            border: 2px solid #333;
+            background: #111;
+        }
+
+        canvas {
+            display: block;
+            cursor: default;
+        }
+
+        #log-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            background: rgba(0,0,0,0.85);
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            padding: 8px;
+            pointer-events: none;
+            border: 1px solid #333;
+            border-radius: 4px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Help Icon */
+        #help-icon {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 30px;
+            height: 30px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            z-index: 5;
+            transition: background 0.2s;
+        }
+        #help-icon:hover { background: rgba(255,255,255,0.3); }
+
+        #ui-overlay, #instructions-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            color: #fff;
+            padding: 40px;
+        }
+
+        #instructions-overlay {
+            overflow-y: auto;
+            align-items: flex-start;
+            justify-content: flex-start;
+        }
+
+        .zombie-font { font-family: 'Creepster', cursive; }
+        
+        .btn {
+            margin-top: 20px;
+            padding: 10px 30px;
+            background: #900;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .btn:hover { background: #c00; }
+
+        .help-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .help-section h3 { color: #f00; margin-bottom: 5px; text-transform: uppercase; font-size: 14px; }
+        .help-section ul { padding-left: 18px; margin: 0; }
+        .close-help { position: absolute; top: 20px; right: 20px; font-size: 24px; cursor: pointer; color: #666; }
+        .close-help:hover { color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="help-icon" title="How to Play" onclick="toggleInstructions(true)">?</div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="log-overlay">Initialising...</div>
+
+        <!-- End Game Overlay -->
+        <div id="ui-overlay">
+            <h1 id="overlay-title" class="zombie-font" style="color: #f00; font-size: 80px; margin: 0;">MISSION FAILED</h1>
+            <p id="overlay-msg" style="color: #ccc; font-size: 18px; text-align: center; max-width: 80%;">The colony has fallen.</p>
+            <button class="btn" onclick="initGame()">Try Again</button>
+        </div>
+
+        <!-- Instructions Overlay -->
+        <div id="instructions-overlay">
+            <span class="close-help" onclick="toggleInstructions(false)">×</span>
+            <h2 class="zombie-font" style="color: #f00; font-size: 40px; margin-bottom: 10px;">SURVIVAL GUIDE</h2>
+            
+            <div class="help-grid">
+                <div class="help-section">
+                    <h3>The Objective</h3>
+                    <p>Clear the deck and survive. You win when the deck is empty and the board is clear, provided you met your quotas.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Inventory Management</h3>
+                    <p>Items in the <strong>Scavenge Area</strong> must be moved to your <strong>Hand (Inventory)</strong> or <strong>Backpack (Storage)</strong> before they can be used. You cannot fight or heal directly from the floor!</p>
+                </div>
+                <div class="help-section">
+                    <h3>Combat (Zombies)</h3>
+                    <ul>
+                        <li><strong>Weapons:</strong> Drag a Weapon from your <em>Hand</em> onto a Zombie on the board.</li>
+                        <li><strong>Engagement:</strong> Drag Zombies directly to the Action Zone cards to fight or hide.</li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>The RUN (1x) Button</h3>
+                    <p>Feeling overwhelmed? Click the orange **RUN** button in the top-right to shuffle current scavenge items back into the deck and draw 4 new ones. **One use only per game.**</p>
+                </div>
+                <div class="help-section">
+                    <h3>Supplies & Health</h3>
+                    <ul>
+                        <li><strong>Backpack:</strong> Store Food/Materials for quota. Items can be dragged back to your hand if you have space.</li>
+                        <li><strong>Healing:</strong> Drag Hearts from your <em>Hand</em> to the bars or Scavenger card.</li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Hunger Tax</h3>
+                    <p>Survivors must eat. <strong>-3 Player HP</strong> is applied at the end of every hand.</p>
+                </div>
+            </div>
+            <button class="btn" style="background: #333; margin-top: 30px;" onclick="toggleInstructions(false)">Back to Game</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const logOverlay = document.getElementById('log-overlay');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const instructionsOverlay = document.getElementById('instructions-overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayMsg = document.getElementById('overlay-msg');
+
+        const ASSETS = {
+            bg: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Background%20small.png',
+            cards: 'https://christaylor-design.github.io/Dead_Reckoning/Card%20board.png',
+            discard: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Discard.png',
+            runUsed: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Run.png'
+        };
+
+        const CARD_SPRITES = {
+            SCAVENGER: { row: 0, col: 0, suit: 'CLUBS', symbol: '♣', isAction: true },
+            AVOID:     { row: 0, col: 1, suit: 'HEARTS', symbol: '♥', isAction: true },
+            CLUBS:    { row: 0, col: 2, suit: 'CLUBS', symbol: '♣' }, 
+            DIAMONDS:  { row: 1, col: 0, suit: 'DIAMONDS', symbol: '♦' }, 
+            HEARTS:    { row: 1, col: 1, suit: 'HEARTS', symbol: '♥' }, 
+            SPADES:    { row: 1, col: 2, suit: 'SPADES', symbol: '♠' }  
+        };
+
+        const state = {
+            deck: [],
+            scavengeArea: [null, null, null, null],
+            inventory: [null, null],
+            storage: null,
+            playerHP: 20,
+            shelterHP: 20,
+            foodQuota: 0,
+            foodTarget: 12,
+            materialsQuota: 0,
+            materialsTarget: 22,
+            avoidsUsedThisHand: 0,
+            runUsed: false,
+            gameActive: false,
+            draggingCard: null,
+            dragOffset: { x: 0, y: 0 },
+            mouse: { x: 0, y: 0 },
+            imagesLoaded: false,
+            actionZoneCards: {
+                scavenger: { ...CARD_SPRITES.SCAVENGER },
+                avoid: { ...CARD_SPRITES.AVOID }
+            }
+        };
+
+        const UI = {
+            width: 1024,
+            height: 768,
+            scavengeSlots: [
+                { x: 321, y: 239, w: 94, h: 124 },
+                { x: 434, y: 239, w: 94, h: 124 },
+                { x: 552, y: 239, w: 94, h: 124 },
+                { x: 665, y: 239, w: 94, h: 124 }
+            ],
+            inventorySlots: [
+                { x: 31, y: 439, w: 94, h: 124 },
+                { x: 148, y: 439, w: 94, h: 124 }
+            ],
+            actionSlots: [
+                { x: 371, y: 448, w: 141, h: 187, type: 'scavenger' }, 
+                { x: 571, y: 448, w: 141, h: 187, type: 'avoid' }
+            ],
+            storageSlot: { x: 896, y: 439, w: 94, h: 124 },
+            discardSlot: { x: 84, y: 230, w: 118, h: 144 }, 
+            runBtn: { x: 865, y: 60, w: 91, h: 46 }, // Updated position and size
+            bars: {
+                player: { x: 133, y: 129, w: 394, h: 56, color: '#4a1', val: 'playerHP', max: 20, label: 'PLAYER HEALTH' },
+                shelter: { x: 552, y: 129, w: 394, h: 56, color: '#26a', val: 'shelterHP', max: 20, label: 'SHELTER HEALTH' }
+            },
+            textPositions: {
+                deck: { x: 619, y: 80, w: 31, h: 22 },
+                food: { x: 709, y: 77, w: 45, h: 25 },
+                materials: { x: 800, y: 77, w: 45, h: 25 }
+            }
+        };
+
+        const imgBg = new Image();
+        const imgCards = new Image();
+        const imgDiscard = new Image();
+        const imgRunUsed = new Image();
+        let loadedCount = 0;
+
+        function addLog(msg, isError = false) {
+            logOverlay.innerText = "> " + msg;
+            logOverlay.style.color = isError ? '#f00' : '#0f0';
+        }
+
+        function toggleInstructions(show) {
+            instructionsOverlay.style.display = show ? 'flex' : 'none';
+        }
+
+        function createDeck() {
+            const deck = [];
+            const suits = ['HEARTS', 'CLUBS', 'SPADES', 'DIAMONDS'];
+            suits.forEach(suit => {
+                const maxRank = (suit === 'CLUBS') ? 13 : 9;
+                for (let i = 1; i <= maxRank; i++) {
+                    deck.push({
+                        ...CARD_SPRITES[suit],
+                        value: i,
+                        power: i,
+                        id: 'card-' + Math.random().toString(36).substr(2, 9)
+                    });
+                }
+            });
+            return shuffle(deck);
+        }
+
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function init() {
+            resize(); 
+            imgBg.crossOrigin = "anonymous";
+            imgBg.onload = checkLoaded;
+            imgBg.src = ASSETS.bg;
+
+            imgCards.crossOrigin = "anonymous";
+            imgCards.onload = checkLoaded;
+            imgCards.src = ASSETS.cards;
+
+            imgDiscard.crossOrigin = "anonymous";
+            imgDiscard.onload = checkLoaded;
+            imgDiscard.src = ASSETS.discard;
+
+            imgRunUsed.crossOrigin = "anonymous";
+            imgRunUsed.onload = checkLoaded;
+            imgRunUsed.src = ASSETS.runUsed;
+
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        }
+
+        function checkLoaded() {
+            loadedCount++;
+            if (loadedCount === 4) {
+                state.imagesLoaded = true;
+                initGame();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function resize() {
+            const scale = Math.min(window.innerWidth / UI.width, window.innerHeight / UI.height);
+            canvas.width = UI.width;
+            canvas.height = UI.height;
+            canvas.style.width = (UI.width * scale) + 'px';
+            canvas.style.height = (UI.height * scale) + 'px';
+        }
+
+        function initGame() {
+            state.deck = createDeck();
+            state.playerHP = 20;
+            state.shelterHP = 20;
+            state.foodQuota = 0;
+            state.materialsQuota = 0;
+            state.inventory = [null, null];
+            state.scavengeArea = [null, null, null, null];
+            state.storage = null;
+            state.avoidsUsedThisHand = 0;
+            state.runUsed = false;
+            state.gameActive = true;
+            uiOverlay.style.display = 'none';
+            toggleInstructions(false);
+            drawHand();
+            addLog("Mission Started. Secure supplies for the colony.");
+        }
+
+        function checkGameOver() {
+            if (state.playerHP <= 0 || state.shelterHP <= 0) {
+                state.gameActive = false;
+                overlayTitle.innerText = "MISSION FAILED";
+                overlayTitle.style.color = "#f00";
+                overlayMsg.innerText = "You're dead. The wasteland has claimed the colony.";
+                uiOverlay.style.display = 'flex';
+                return true;
+            }
+            if (state.deck.length === 0 && state.scavengeArea.every(c => c === null)) {
+                state.gameActive = false;
+                const quotasMet = state.foodQuota >= state.foodTarget && state.materialsQuota >= state.materialsTarget;
+                if (quotasMet) {
+                    overlayTitle.innerText = "MISSION SUCCESSFUL";
+                    overlayTitle.style.color = "#0f0";
+                    overlayMsg.innerText = "Thriving! You secured the resources needed to flourish.";
+                } else {
+                    overlayTitle.innerText = "MISSION FAILED";
+                    overlayTitle.style.color = "#f60";
+                    overlayMsg.innerText = "You survived, but the mission failed. Quotas not met.";
+                }
+                uiOverlay.style.display = 'flex';
+                return true;
+            }
+            return false;
+        }
+
+        function drawHand() {
+            state.avoidsUsedThisHand = 0; 
+            let filled = 0;
+            for (let i = 0; i < 4; i++) {
+                if (state.scavengeArea[i] === null && state.deck.length > 0) {
+                    state.scavengeArea[i] = state.deck.shift();
+                    filled++;
+                }
+            }
+            if (filled > 0) addLog(`Scavenged ${filled} items. Deck: ${state.deck.length}`);
+            checkGameOver();
+        }
+
+        function checkTurnState() {
+            const activeItems = state.scavengeArea.filter(c => c !== null);
+            if (activeItems.length <= 1) {
+                endHand();
+            }
+        }
+
+        function endHand() {
+            if (state.storage) {
+                const item = state.storage;
+                if (item.suit === 'HEARTS') state.foodQuota += item.power;
+                if (item.suit === 'DIAMONDS') state.materialsQuota += item.power;
+                state.storage = null;
+                addLog(`Secured ${item.power} ${item.suit}.`);
+            }
+            if (state.deck.length > 0) {
+                state.playerHP -= 3;
+                addLog("Hunger tax: -3 HP.");
+            }
+            if (!checkGameOver()) {
+                drawHand();
+            }
+        }
+
+        function drawCard(card, x, y, w, h, isDragging = false) {
+            if (!card) return;
+            const sw = 384, sh = 512;
+            const sx = (card.col || 0) * sw;
+            const sy = (card.row || 0) * sh;
+
+            ctx.save();
+            if (isDragging) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "rgba(0,0,0,0.7)";
+                ctx.globalAlpha = 0.85;
+            }
+            ctx.drawImage(imgCards, sx, sy, sw, sh, x, y, w, h);
+            if (!card.isAction) {
+                const displayVal = card.power !== undefined ? card.power : card.value;
+                if (displayVal !== undefined) {
+                    const fontSize = Math.floor(h * 0.12);
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.textAlign = "center";
+                    const drawValue = (txt, tx, ty) => {
+                        ctx.strokeStyle = "white";
+                        ctx.lineWidth = 3;
+                        ctx.strokeText(txt, tx, ty);
+                        ctx.fillStyle = "#111";
+                        ctx.fillText(txt, tx, ty);
+                    };
+                    const xOff = w * 0.14, yOffTop = h * 0.15, yOffBot = h * 0.95;
+                    drawValue(displayVal.toString(), x + w - xOff, y + yOffTop);
+                    drawValue(displayVal.toString(), x + xOff, y + yOffBot);
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawUI() {
+            if (!state.imagesLoaded) return;
+            ctx.drawImage(imgBg, 0, 0, UI.width, UI.height);
+            ctx.drawImage(imgDiscard, UI.discardSlot.x, UI.discardSlot.y, UI.discardSlot.w, UI.discardSlot.h);
+
+            // Health Bars
+            Object.values(UI.bars).forEach(b => {
+                const pct = Math.max(0, state[b.val] / b.max);
+                ctx.fillStyle = b.color; ctx.globalAlpha = 0.4;
+                ctx.fillRect(b.x, b.y, b.w * pct, b.h);
+                ctx.globalAlpha = 1; ctx.fillStyle = "#fff";
+                ctx.font = "bold 13px Arial"; ctx.textAlign = "center";
+                ctx.fillText(`${b.label}: ${Math.max(0, state[b.val])} / ${b.max}`, b.x + b.w/2, b.y + b.h/2 + 5);
+            });
+
+            ctx.textAlign = "center"; ctx.font = "bold 16px monospace";
+            ctx.fillStyle = (state.foodQuota >= state.foodTarget) ? "#0f0" : "#4a1";
+            ctx.fillText(`${state.foodQuota}/${state.foodTarget}`, UI.textPositions.food.x + UI.textPositions.food.w/2, UI.textPositions.food.y + 18);
+            ctx.fillStyle = (state.materialsQuota >= state.materialsTarget) ? "#0f0" : "#8af";
+            ctx.fillText(`${state.materialsQuota}/${state.materialsTarget}`, UI.textPositions.materials.x + UI.textPositions.materials.w/2, UI.textPositions.materials.y + 18);
+            ctx.fillStyle = "#fc2";
+            ctx.fillText(state.deck.length, UI.textPositions.deck.x + UI.textPositions.deck.w/2, UI.textPositions.deck.y + 18);
+
+            drawCard(state.actionZoneCards.scavenger, UI.actionSlots[0].x, UI.actionSlots[0].y, UI.actionSlots[0].w, UI.actionSlots[0].h);
+            drawCard(state.actionZoneCards.avoid, UI.actionSlots[1].x, UI.actionSlots[1].y, UI.actionSlots[1].w, UI.actionSlots[1].h);
+
+            UI.scavengeSlots.forEach((s, i) => drawCard(state.scavengeArea[i], s.x, s.y, s.w, s.h));
+            UI.inventorySlots.forEach((s, i) => drawCard(state.inventory[i], s.x, s.y, s.w, s.h));
+            if (state.storage) drawCard(state.storage, UI.storageSlot.x, UI.storageSlot.y, UI.storageSlot.w, UI.storageSlot.h);
+
+            // Draw Spent RUN Graphic
+            if (state.runUsed) {
+                ctx.drawImage(imgRunUsed, UI.runBtn.x, UI.runBtn.y, UI.runBtn.w, UI.runBtn.h);
+            }
+
+            if (state.draggingCard) {
+                drawCard(state.draggingCard.card, state.mouse.x - state.dragOffset.x, state.mouse.y - state.dragOffset.y, 94, 124, true);
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return { x: Math.round((e.clientX - rect.left) * scaleX), y: Math.round((e.clientY - rect.top) * scaleY) };
+        }
+
+        function onMouseDown(e) {
+            if (!state.gameActive || instructionsOverlay.style.display === 'flex') return;
+            const m = getMousePos(e);
+
+            // Check Run Button
+            if (m.x > UI.runBtn.x && m.x < UI.runBtn.x + UI.runBtn.w && m.y > UI.runBtn.y && m.y < UI.runBtn.y + UI.runBtn.h) {
+                if (!state.runUsed) {
+                    triggerRun();
+                    return;
+                }
+            }
+
+            // Check Scavenge Area
+            UI.scavengeSlots.forEach((s, i) => {
+                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.scavengeArea[i]) {
+                    state.draggingCard = { card: state.scavengeArea[i], origin: 'scavenge', index: i };
+                    state.dragOffset = { x: m.x - s.x, y: m.y - s.y };
+                    state.scavengeArea[i] = null;
+                }
+            });
+
+            // Check Inventory (Hand)
+            UI.inventorySlots.forEach((s, i) => {
+                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.inventory[i]) {
+                    state.draggingCard = { card: state.inventory[i], origin: 'inventory', index: i };
+                    state.dragOffset = { x: m.x - s.x, y: m.y - s.y };
+                    state.inventory[i] = null;
+                }
+            });
+
+            // Check Storage (Backpack)
+            const st = UI.storageSlot;
+            if (m.x > st.x && m.x < st.x + st.w && m.y > st.y && m.y < st.y + st.h && state.storage) {
+                state.draggingCard = { card: state.storage, origin: 'storage', index: -1 };
+                state.dragOffset = { x: m.x - st.x, y: m.y - st.y };
+                state.storage = null;
+                addLog("Retrieved item from backpack.");
+            }
+        }
+
+        function triggerRun() {
+            const currentScavenge = state.scavengeArea.filter(c => c !== null);
+            if (currentScavenge.length === 0 && state.deck.length === 0) return;
+            state.deck.push(...currentScavenge);
+            shuffle(state.deck);
+            state.scavengeArea = [null, null, null, null];
+            state.runUsed = true;
+            addLog("Tactical retreat! New area scouted.");
+            drawHand();
+        }
+
+        function onMouseMove(e) { state.mouse = getMousePos(e); }
+
+        function onMouseUp(e) {
+            if (!state.draggingCard) return;
+            const m = getMousePos(e);
+            const card = state.draggingCard.card;
+            const origin = state.draggingCard.origin;
+            let placed = false;
+
+            // Combat (Clash) - ONLY from Inventory (Hand)
+            UI.scavengeSlots.forEach((s, i) => {
+                const target = state.scavengeArea[i];
+                if (target && target.suit === 'CLUBS' && card.suit === 'SPADES') {
+                    if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                        if (origin === 'inventory') {
+                            if (card.power >= target.power) {
+                                addLog(`Zombie neutralised!`);
+                                state.scavengeArea[i] = null;
+                            } else {
+                                target.power -= card.power;
+                                addLog(`Zombie weakened to ${target.power}.`);
+                            }
+                            placed = true;
+                        } else {
+                            addLog("Pick up the weapon first!", true);
+                        }
+                    }
+                }
+            });
+
+            // Action Zone drops
+            if (!placed) {
+                UI.actionSlots.forEach(s => {
+                    if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                        if (card.suit === 'HEARTS' && s.type === 'scavenger') {
+                            if (origin === 'inventory') {
+                                state.playerHP = Math.min(20, state.playerHP + (card.power || 0));
+                                addLog(`Healed for ${card.power} HP.`);
+                                placed = true;
+                            } else {
+                                addLog("Pick up the supplies first!", true);
+                            }
+                        } 
+                        else if (card.suit === 'CLUBS') {
+                            if (s.type === 'scavenger') {
+                                state.playerHP -= card.power;
+                                addLog(`Engaged zombie. Took ${card.power} damage.`);
+                                placed = true;
+                            } else {
+                                if (state.avoidsUsedThisHand < 1) {
+                                    state.shelterHP -= 5;
+                                    state.avoidsUsedThisHand++;
+                                    addLog(`Avoided zombie. Shelter took 5 damage.`);
+                                    placed = true;
+                                } else {
+                                    addLog("Avoid limit reached.", true);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Discard Crate
+            if (!placed) {
+                const ds = UI.discardSlot;
+                if (m.x > ds.x && m.x < ds.x + ds.w && m.y > ds.y && m.y < ds.y + ds.h) {
+                    if (card.suit !== 'CLUBS') {
+                        addLog(`Scrapped ${card.suit} card.`);
+                        placed = true;
+                    } else {
+                        addLog("Cannot discard a Zombie!", true);
+                    }
+                }
+            }
+
+            // Inventory (Hand)
+            if (!placed) {
+                UI.inventorySlots.forEach((s, i) => {
+                    if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && !state.inventory[i]) {
+                        if (card.suit !== 'CLUBS') {
+                            state.inventory[i] = card;
+                            placed = true;
+                        }
+                    }
+                });
+            }
+
+            // Storage (Backpack)
+            if (!placed) {
+                const st = UI.storageSlot;
+                if (m.x > st.x && m.x < st.x + st.w && m.y > st.y && m.y < st.y + st.h && !state.storage) {
+                    if (card.suit !== 'CLUBS') {
+                        state.storage = card;
+                        placed = true;
+                    }
+                }
+            }
+
+            // Direct Interaction with Bars
+            if (!placed) {
+                if (card.suit === 'HEARTS' && m.x > UI.bars.player.x && m.x < UI.bars.player.x + UI.bars.player.w && m.y > UI.bars.player.y && m.y < UI.bars.player.y + UI.bars.player.h) {
+                    if (origin === 'inventory') {
+                        state.playerHP = Math.min(20, state.playerHP + (card.power || 0));
+                        addLog(`Healed for ${card.power} HP.`);
+                        placed = true;
+                    } else {
+                        addLog("Pick up the supplies first!", true);
+                    }
+                }
+                if (card.suit === 'DIAMONDS' && m.x > UI.bars.shelter.x && m.x < UI.bars.shelter.x + UI.bars.shelter.w && m.y > UI.bars.shelter.y && m.y < UI.bars.shelter.y + UI.bars.shelter.h) {
+                    if (origin === 'inventory') {
+                        state.shelterHP = Math.min(20, state.shelterHP + (card.power || 0));
+                        addLog(`Repaired shelter for ${card.power}.`);
+                        placed = true;
+                    } else {
+                        addLog("Pick up the materials first!", true);
+                    }
+                }
+            }
+
+            // Snap Back Logic
+            if (!placed) {
+                if (origin === 'scavenge') state.scavengeArea[state.draggingCard.index] = card;
+                else if (origin === 'inventory') state.inventory[state.draggingCard.index] = card;
+                else if (origin === 'storage') state.storage = card; 
+            } else {
+                if (!checkGameOver()) checkTurnState();
+            }
+            state.draggingCard = null;
+        }
+
+        function gameLoop() {
+            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, UI.width, UI.height);
+            drawUI(); requestAnimationFrame(gameLoop);
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
