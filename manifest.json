@@ -1,15 +1,23 @@
 {
   "short_name": "Dead Reckoning",
-  "name": "Dead Reckoning Navigation",
+  "name": "Dead Reckoning: Zombie Survival",
   "icons": [
     {
       "src": "assets/Discard.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/Discard.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
     }
   ],
   "start_url": "./index.html",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "orientation": "landscape",
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a"
 }
