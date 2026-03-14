@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Dead Reckoning: Zombie Survival</title>
@@ -18,7 +17,6 @@
             height: 100vh;
             width: 100vw;
             overflow: hidden;
-            /* Prevents standard browser touch gestures like pull-to-refresh */
             touch-action: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -38,14 +36,10 @@
 
         canvas {
             display: block;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -webkit-crisp-edges;
-            image-rendering: pixelated;
             image-rendering: crisp-edges;
             touch-action: none;
         }
 
-        /* Portrait Warning Overlay */
         #rotate-overlay {
             position: fixed;
             inset: 0;
@@ -88,7 +82,7 @@
             position: absolute;
             top: 15px;
             left: 15px;
-            width: 44px; /* Apple/Google recommended touch size */
+            width: 44px;
             height: 44px;
             background: rgba(255,255,255,0.15);
             border: 2px solid rgba(255,255,255,0.3);
@@ -103,7 +97,7 @@
             z-index: 20;
         }
 
-        #ui-overlay, #instructions-overlay {
+        #ui-overlay {
             position: absolute;
             inset: 0;
             background: rgba(0, 0, 0, 0.95);
@@ -116,10 +110,23 @@
             padding: 20px;
         }
 
+        /* NEW: Simplified Image-only Instruction Overlay */
         #instructions-overlay {
-            overflow-y: auto;
-            align-items: flex-start;
-            justify-content: flex-start;
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 150;
+            cursor: pointer; /* Allows clicking anywhere to close */
+        }
+
+        #instruction-img {
+            max-width: 90%;
+            max-height: 90%;
+            box-shadow: 0 0 30px rgba(0,0,0,1);
+            border: 2px solid #444;
         }
 
         .zombie-font { font-family: 'Creepster', cursive; }
@@ -137,25 +144,19 @@
             font-size: 16px;
         }
 
-        .help-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 15px;
-            margin-top: 20px;
-            font-size: 14px;
-            line-height: 1.4;
+        .close-help { 
+            position: absolute; 
+            top: 20px; 
+            right: 20px; 
+            font-size: 40px; 
+            color: #fff; 
+            padding: 10px;
+            z-index: 160;
         }
-        @media (min-width: 600px) {
-            .help-grid { grid-template-columns: 1fr 1fr; }
-        }
-
-        .help-section h3 { color: #f00; margin-bottom: 5px; text-transform: uppercase; font-size: 15px; }
-        .close-help { position: absolute; top: 20px; right: 20px; font-size: 35px; cursor: pointer; color: #fff; padding: 10px; }
     </style>
 </head>
 <body>
 
-    <!-- Rotation Prompt for Mobile -->
     <div id="rotate-overlay">
         <div class="zombie-font" style="font-size: 40px; color: #f00; margin-bottom: 20px;">INCOMING THREAT</div>
         <p>Please rotate your device to <strong>LANDSCAPE</strong> to start the scavenge.</p>
@@ -173,32 +174,9 @@
             <button class="btn" onclick="initGame()">Try Again</button>
         </div>
 
-        <div id="instructions-overlay">
-            <span class="close-help" onclick="toggleInstructions(false)">×</span>
-            <h2 class="zombie-font" style="color: #f00; font-size: 40px; margin-bottom: 10px;">SURVIVAL GUIDE</h2>
-            
-            <div class="help-grid">
-                <div class="help-section">
-                    <h3>The Objective</h3>
-                    <p>Clear the deck and survive. You win when the deck is empty and quotas are met.</p>
-                </div>
-                <div class="help-section">
-                    <h3>Inventory Management</h3>
-                    <p>Pick up items (Hand/Backpack) before use. Zombies can be dragged directly to Action Zones.</p>
-                </div>
-                <div class="help-section">
-                    <h3>Repair & Heal</h3>
-                    <ul>
-                        <li><strong>Survivor HP:</strong> Drag Hearts to Scavenger card or HP Bar.</li>
-                        <li><strong>Shelter Health:</strong> ONLY increased by dragging Materials to the **Fix Shelter** slot on the right.</li>
-                    </ul>
-                </div>
-                <div class="help-section">
-                    <h3>Discarding</h3>
-                    <p>Drag unwanted items to the <strong>Discard</strong> slot on the left to scrap them.</p>
-                </div>
-            </div>
-            <button class="btn" style="background: #333; margin-top: 30px; width: 100%;" onclick="toggleInstructions(false)">Back to Game</button>
+        <div id="instructions-overlay" onclick="toggleInstructions(false)">
+            <span class="close-help">×</span>
+            <img id="instruction-img" src="https://christaylor-design.github.io/Dead_Reckoning/assets/Instruction%20board.png" alt="Survival Guide">
         </div>
     </div>
 
@@ -345,18 +323,17 @@
             window.addEventListener('resize', resize);
             window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
-            // Input Management
             canvas.addEventListener('mousedown', handleStart);
             window.addEventListener('mousemove', handleMove);
             window.addEventListener('mouseup', handleEnd);
 
             canvas.addEventListener('touchstart', (e) => { 
-                if (e.touches.length > 1) return; // Prevent multi-touch zooming
+                if (e.touches.length > 1) return;
                 handleStart(e.touches[0]); 
             }, {passive: false});
 
             window.addEventListener('touchmove', (e) => { 
-                e.preventDefault(); // Lock browser scrolling
+                e.preventDefault();
                 handleMove(e.touches[0]); 
             }, {passive: false});
 
@@ -378,19 +355,13 @@
             const container = document.getElementById('game-container');
             const w = window.innerWidth;
             const h = window.innerHeight;
-            
-            // Calculate best fit maintaining aspect ratio
             let scale = Math.min(w / UI.width, h / UI.height);
-            
             canvas.width = UI.width;
             canvas.height = UI.height;
-            
             const scaledW = UI.width * scale;
             const scaledH = UI.height * scale;
-            
             canvas.style.width = scaledW + 'px';
             canvas.style.height = scaledH + 'px';
-            
             container.style.width = scaledW + 'px';
             container.style.height = scaledH + 'px';
         }
@@ -531,10 +502,7 @@
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
-            return { 
-                x: Math.round((e.clientX - rect.left) * scaleX), 
-                y: Math.round((e.clientY - rect.top) * scaleY) 
-            };
+            return { x: Math.round((e.clientX - rect.left) * scaleX), y: Math.round((e.clientY - rect.top) * scaleY) };
         }
 
         function handleStart(e) {
@@ -642,4 +610,3 @@
     </script>
 </body>
 </html>
-
