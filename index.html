@@ -88,6 +88,24 @@
             z-index: 100;
             color: #fff;
             padding: 20px;
+            text-align: center;
+        }
+
+        #overlay-title {
+            color: #f00;
+            margin: 0;
+            /* Scales between 40px and 120px based on viewport width */
+            font-size: clamp(40px, 8vw, 120px); 
+            line-height: 1.1;
+        }
+
+        #overlay-msg {
+            color: #ccc;
+            /* Scales between 18px and 32px */
+            font-size: clamp(18px, 2.5vw, 32px);
+            max-width: 90%;
+            line-height: 1.4;
+            margin: 20px 0;
         }
 
         #instructions-overlay {
@@ -105,8 +123,7 @@
         .zombie-font { font-family: 'Creepster', cursive; }
         
         .btn {
-            margin-top: 20px;
-            padding: 20px 50px;
+            padding: clamp(10px, 2vh, 20px) clamp(20px, 4vw, 50px);
             background: #900;
             color: white;
             border: none;
@@ -114,8 +131,11 @@
             cursor: pointer;
             font-weight: bold;
             text-transform: uppercase;
-            font-size: 24px;
+            font-size: clamp(16px, 2vw, 24px);
+            transition: background 0.2s;
         }
+
+        .btn:hover { background: #b00; }
 
         .close-help { 
             position: absolute; 
@@ -141,8 +161,8 @@
         <canvas id="gameCanvas"></canvas>
 
         <div id="ui-overlay">
-            <h1 id="overlay-title" class="zombie-font" style="color: #f00; font-size: 120px; margin: 0;">MISSION FAILED</h1>
-            <p id="overlay-msg" style="color: #ccc; font-size: 32px; text-align: center; max-width: 80%;">The colony has fallen.</p>
+            <h1 id="overlay-title" class="zombie-font">MISSION FAILED</h1>
+            <p id="overlay-msg">The colony has fallen.</p>
             <button class="btn" onclick="initGame()">Try Again</button>
         </div>
 
@@ -322,6 +342,7 @@
             if (state.playerHP <= 0 || state.shelterHP <= 0) {
                 state.gameActive = false;
                 overlayTitle.innerText = "MISSION FAILED";
+                overlayTitle.style.color = "#f00";
                 overlayMsg.innerText = "Dead. The wasteland claims all.";
                 uiOverlay.style.display = 'flex';
                 return true;
@@ -476,7 +497,6 @@
             if (!state.gameActive || instructionsOverlay.style.display === 'flex') return;
             const m = getEventPos(e); state.mouse = m;
 
-            // Run Button Interaction
             if (m.x > UI.runBtn.x && m.x < UI.runBtn.x + UI.runBtn.w && m.y > UI.runBtn.y && m.y < UI.runBtn.y + UI.runBtn.h && !state.runUsed) {
                 triggerRun();
                 return;
@@ -514,7 +534,6 @@
             const m = state.mouse, card = state.draggingCard.card, origin = state.draggingCard.origin;
             let placed = false;
 
-            // 1. COMBAT CHECK
             state.scavengeArea.forEach((target, i) => {
                 const s = UI.scavengeSlots[i];
                 if (target && target.suit === 'CLUBS' && card.suit === 'SPADES' && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
@@ -526,7 +545,6 @@
                 }
             });
 
-            // 2. DISCARD/SCRAP CHECK (Top Left)
             if (!placed && m.x > UI.discardSlot.x - 20 && m.x < UI.discardSlot.x + UI.discardSlot.w + 20 && m.y > UI.discardSlot.y - 20 && m.y < UI.discardSlot.y + UI.discardSlot.h + 20) {
                 if (card.suit === 'CLUBS') {
                     addLog("You can't scrap a threat!", true);
@@ -538,7 +556,6 @@
                 }
             }
 
-            // 3. ACTION SLOTS (Scavenger / Avoid)
             if (!placed) UI.actionSlots.forEach(s => {
                 if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
                     if (card.suit === 'DIAMONDS') {
@@ -557,20 +574,17 @@
                 }
             });
 
-            // 4. FIX SHELTER STATION
             if (!placed && m.x > UI.fixShelterSlot.x && m.x < UI.fixShelterSlot.x + UI.fixShelterSlot.w && m.y > UI.fixShelterSlot.y && m.y < UI.fixShelterSlot.y + UI.fixShelterSlot.h) {
                 if (origin !== 'scavenge' && card.suit === 'DIAMONDS') { state.shelterHP = Math.min(20, state.shelterHP + card.power); placed = true; }
                 else if (card.suit !== 'DIAMONDS') addLog("Only materials fit here!", true);
                 else addLog("Pick up materials first!", true);
             }
 
-            // 5. POCKET (Special Cards Only)
             if (!placed && m.x > UI.pocketSlot.x && m.x < UI.pocketSlot.x + UI.pocketSlot.w && m.y > UI.pocketSlot.y && m.y < UI.pocketSlot.y + UI.pocketSlot.h && !state.pocket) {
                 if (card.isSpecial) { state.pocket = card; placed = true; }
                 else { addLog("Only unique items fit here!", true); }
             }
 
-            // 6. INVENTORY & STORAGE
             if (!placed) {
                 UI.inventorySlots.forEach((s, i) => {
                     if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
@@ -591,7 +605,6 @@
                 }
             }
 
-            // 7. HEALTH BAR (Meds Shortcut)
             if (!placed && card.suit === 'HEARTS' && m.x > UI.bars.player.x && m.x < UI.bars.player.x + UI.bars.player.w && m.y > UI.bars.player.y && m.y < UI.bars.player.y + UI.bars.player.h && origin !== 'scavenge') {
                 state.playerHP = Math.min(20, state.playerHP + card.power); placed = true;
             }
