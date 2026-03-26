@@ -94,14 +94,12 @@
         #overlay-title {
             color: #f00;
             margin: 0;
-            /* Scales between 40px and 120px based on viewport width */
             font-size: clamp(40px, 8vw, 120px); 
             line-height: 1.1;
         }
 
         #overlay-msg {
             color: #ccc;
-            /* Scales between 18px and 32px */
             font-size: clamp(18px, 2.5vw, 32px);
             max-width: 90%;
             line-height: 1.4;
@@ -133,6 +131,7 @@
             text-transform: uppercase;
             font-size: clamp(16px, 2vw, 24px);
             transition: background 0.2s;
+            margin: 5px;
         }
 
         .btn:hover { background: #b00; }
@@ -146,9 +145,39 @@
             padding: 10px;
             z-index: 160;
         }
+
+        #dev-tools {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 2000;
+            display: none; /* HIDDEN BY DEFAULT */
+            flex-direction: column;
+            gap: 5px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .dev-btn {
+            background: #444;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .dev-btn:hover { background: #030; }
     </style>
 </head>
 <body>
+
+    <div id="dev-tools">
+        <button class="dev-btn" onclick="devWin()">DEV: Win Mission</button>
+        <button class="dev-btn" onclick="devAddScrap()">DEV: +5 Scrap</button>
+        <button class="dev-btn" onclick="devResetSave()">DEV: Reset Save</button>
+    </div>
 
     <div id="rotate-overlay">
         <div class="zombie-font" style="font-size: 60px; color: #f00; margin-bottom: 20px;">INCOMING THREAT</div>
@@ -163,7 +192,10 @@
         <div id="ui-overlay">
             <h1 id="overlay-title" class="zombie-font">MISSION FAILED</h1>
             <p id="overlay-msg">The colony has fallen.</p>
-            <button class="btn" onclick="initGame()">Try Again</button>
+            <div id="overlay-actions">
+                <button class="btn" onclick="initGame()">Try Again</button>
+                <button id="btn-return-base" class="btn" style="background:#444;" onclick="returnToBase()">Return to Base</button>
+            </div>
         </div>
 
         <div id="instructions-overlay" onclick="toggleInstructions(false)">
@@ -180,25 +212,35 @@
         const overlayTitle = document.getElementById('overlay-title');
         const overlayMsg = document.getElementById('overlay-msg');
 
-        // RESOLUTION SYNC: 2752 x 1536
         const UI_RES = { w: 2752, h: 1536 };
 
         const ASSETS = {
             bg: 'https://christaylor-design.github.io/Dead_Reckoning/assets/New%20background.png',
             cards: 'https://christaylor-design.github.io/Dead_Reckoning/Card%20board.png',
-            runBtn: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Run%20Button.png'
-        };
-
-        const CARD_SPRITES = {
-            SCAVENGER: { row: 0, col: 0, suit: 'CLUBS' },
-            AVOID:     { row: 0, col: 1, suit: 'HEARTS' },
-            CLUBS:    { row: 0, col: 2, suit: 'CLUBS' }, 
-            DIAMONDS:  { row: 1, col: 0, suit: 'DIAMONDS' }, 
-            HEARTS:    { row: 1, col: 1, suit: 'HEARTS' }, 
-            SPADES:    { row: 1, col: 2, suit: 'SPADES' }  
+            runBtn: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Run%20Button.png',
+            lvlScreen: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Compound%20Level%20Screen.png',
+            pills: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Anti-Rad%20Pills.png',
+            rat: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Wind-up%20Rat.png',
+            axe: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Axe.png',
+            armoured: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Armoured%20Zombie.png',
+            blind: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Blind%20One.png',
+            queen: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Queen%20Zombie.png',
+            backswing: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Backswing.png',
+            victory: 'https://christaylor-design.github.io/Dead_Reckoning/assets/Victory%20Screen.png'
         };
 
         const state = {
+            currentView: 'base', 
+            baseLevel: 1,
+            upgradePieces: 0,
+            showUnlockOverlay: false,
+            showDatabase: false,
+            showVictoryScreen: false,
+            pendingUnlock: null,
+            revealStep: 0, 
+            survivalStreak: 0,
+            bestStreak: 0,
+            isEndless: false,
             deck: [],
             scavengeArea: [null, null, null, null],
             inventory: [null, null],
@@ -217,9 +259,11 @@
             dragOffset: { x: 0, y: 0 },
             mouse: { x: 0, y: 0 },
             imagesLoaded: false,
-            logText: "Mission Start. Secure supplies.",
+            logText: "Initialising compound systems...",
             logColor: "#0f0",
-            radExposure: 3 
+            radExposure: 3,
+            pillsActive: false,
+            isDevMode: false // FLAG TO TRACK IF DEV TOOLS SHOULD BE SHOWN
         };
 
         const UI = {
@@ -251,22 +295,112 @@
                 deck: { x: 1662, y: 113, w: 121, h: 56 },
                 meds: { x: 1976, y: 86, w: 113, h: 64 },
                 materials: { x: 2255, y: 86, w: 113, h: 64 }
+            },
+            base: {
+                startBtn: { x: 1100, y: 1300, w: 550, h: 150 },
+                screen: { x: 2291, y: 988, w: 423, h: 485 },
+                lvlNum: { x: 2500, y: 1148, w: 145, h: 72 },
+                upgradeTxt: { x: 2500, y: 1242, w: 145, h: 72 },
+                progressBar: { x: 2345, y: 1310, w: 310, h: 70 },
+                unlockModal: { x: 476, y: 218, w: 1800, h: 1100 },
+                databaseBtn: { x: 2291, y: 830, w: 423, h: 140 },
+                victoryButtons: {
+                    newCompound: { x: 476, y: 1250, w: 850, h: 180 },
+                    endless: { x: 1426, y: 1250, w: 850, h: 180 }
+                }
             }
         };
 
         const imgBg = new Image();
         const imgCards = new Image();
         const imgRunBtn = new Image();
+        const imgLvlScreen = new Image();
+        const imgPills = new Image();
+        const imgRat = new Image();
+        const imgAxe = new Image();
+        const imgArmoured = new Image();
+        const imgBlind = new Image();
+        const imgQueen = new Image();
+        const imgBackswing = new Image();
+        const imgVictory = new Image();
+        const baseImages = []; 
         let loadedCount = 0;
 
-        function addLog(msg, isError = false) {
-            state.logText = msg;
-            state.logColor = isError ? '#f33' : '#0f0';
+        function checkDevMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('dev')) {
+                state.isDevMode = true;
+                document.getElementById('dev-tools').style.display = 'flex';
+            }
         }
 
-        function toggleInstructions(show) {
-            instructionsOverlay.style.display = show ? 'flex' : 'none';
+        function saveProgression() {
+            localStorage.setItem('dr_save_v1', JSON.stringify({ 
+                level: state.baseLevel, 
+                pieces: state.upgradePieces,
+                best: state.bestStreak,
+                endless: state.isEndless
+            }));
         }
+
+        function loadProgression() {
+            const saved = localStorage.getItem('dr_save_v1');
+            if (saved) {
+                const data = JSON.parse(saved);
+                state.baseLevel = data.level || 1;
+                state.upgradePieces = data.pieces || 0;
+                state.bestStreak = data.best || 0;
+                state.isEndless = data.endless || false;
+            }
+        }
+
+        function devWin() {
+            if (!state.isDevMode) return;
+            if (state.currentView !== 'game') { addLog("Enter mission first!", true); return; }
+            state.medsQuota = state.medsTarget; state.materialsQuota = state.materialsTarget;
+            state.deck = []; state.scavengeArea = [null, null, null, null];
+            addLog("DEV: Force win triggered."); checkGameOver();
+        }
+
+        function devAddScrap() {
+            if (!state.isDevMode) return;
+            if (state.baseLevel === 7 && state.upgradePieces >= 10) return;
+            state.upgradePieces += 5;
+            if (state.upgradePieces >= 10 && state.baseLevel < 7) { 
+                state.upgradePieces -= 10; 
+                state.baseLevel++;
+                state.pendingUnlock = state.baseLevel;
+                state.revealStep = 0;
+            } else if (state.baseLevel === 7 && state.upgradePieces >= 10) {
+                state.upgradePieces = 10;
+                state.showVictoryScreen = true;
+            }
+            saveProgression();
+        }
+
+        function devResetSave() { if (!state.isDevMode) return; state.baseLevel = 1; state.upgradePieces = 0; state.isEndless = false; state.survivalStreak = 0; saveProgression(); addLog("DEV: Reset."); }
+
+        function isQueenPresent() { return state.scavengeArea.some(c => c && c.specialName === 'The Alpha Queen'); }
+
+        function getZombiePower(card) {
+            if (!card || (card.suit !== 'CLUBS' && !card.isSpecial)) return card?.power || 0;
+            let p = card.power;
+            if (isQueenPresent() && card.specialName !== 'The Alpha Queen') p += 3;
+            return p;
+        }
+
+        function returnToBase() { 
+            state.currentView = 'base'; 
+            uiOverlay.style.display = 'none'; 
+            if (state.pendingUnlock && state.pendingUnlock > 1) {
+                state.showUnlockOverlay = true;
+                state.revealStep = 0;
+            }
+        }
+
+        function addLog(msg, isError = false) { state.logText = msg; state.logColor = isError ? '#f33' : '#0f0'; }
+
+        function toggleInstructions(show) { instructionsOverlay.style.display = show ? 'flex' : 'none'; }
 
         function createDeck() {
             const deck = [];
@@ -274,112 +408,143 @@
             suits.forEach(suit => {
                 const maxRank = (suit === 'CLUBS') ? 13 : 9;
                 for (let i = 1; i <= maxRank; i++) {
-                    deck.push({ ...CARD_SPRITES[suit], value: i, power: i, isSpecial: false, id: 'c-' + Math.random() });
+                    let card = { suit, value: i, power: i, isSpecial: false, specialName: '', id: 'c-' + Math.random(), distracted: false, usesLeft: 1 };
+                    if (suit === 'HEARTS' && i === 1 && state.baseLevel >= 2) { card.isSpecial = true; card.specialName = 'Anti-rad Pills'; card.power = 0; card.asset = imgPills; }
+                    if (suit === 'DIAMONDS' && i === 1 && state.baseLevel >= 3) { card.isSpecial = true; card.specialName = 'Wind-up Rat'; card.power = 0; card.asset = imgRat; }
+                    if (suit === 'SPADES' && i === 1 && state.baseLevel >= 4) { card.isSpecial = true; card.specialName = 'The Axe'; card.power = 12; card.asset = imgAxe; }
+                    if (suit === 'CLUBS' && i === 1 && state.baseLevel >= 4) { card.isSpecial = true; card.specialName = 'Armoured Zombie'; card.power = 15; card.asset = imgArmoured; }
+                    if (suit === 'SPADES' && i === 2 && state.baseLevel >= 5) { card.isSpecial = true; card.specialName = 'Back Swing'; card.power = 0; card.asset = imgBackswing; }
+                    if (suit === 'CLUBS' && i === 2 && state.baseLevel >= 6) { card.isSpecial = true; card.specialName = 'The Blind One'; card.power = 8; card.asset = imgBlind; }
+                    if (suit === 'CLUBS' && i === 3 && state.baseLevel >= 7) { card.isSpecial = true; card.specialName = 'The Alpha Queen'; card.power = 10; card.asset = imgQueen; }
+                    
+                    if(suit === 'CLUBS') { card.row = 0; card.col = 2; }
+                    else if(suit === 'HEARTS') { card.row = 1; card.col = 1; }
+                    else if(suit === 'DIAMONDS') { card.row = 1; card.col = 0; }
+                    else if(suit === 'SPADES') { card.row = 1; card.col = 2; }
+                    deck.push(card);
                 }
             });
             return shuffle(deck);
         }
 
-        function shuffle(arr) {
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            return arr;
+        function resize() {
+            let scale = Math.min(window.innerWidth / UI_RES.w, window.innerHeight / UI_RES.h);
+            canvas.width = UI_RES.w; canvas.height = UI_RES.h;
+            canvas.style.width = (UI_RES.w * scale) + 'px'; canvas.style.height = (UI_RES.h * scale) + 'px';
         }
 
         function init() {
+            checkDevMode();
+            loadProgression();
             resize(); 
-            [imgBg, imgCards, imgRunBtn].forEach(img => img.crossOrigin = "anonymous");
+            const toLoad = [imgBg, imgCards, imgRunBtn, imgLvlScreen, imgPills, imgRat, imgAxe, imgArmoured, imgBlind, imgQueen, imgBackswing, imgVictory];
+            toLoad.forEach(img => img.crossOrigin = "anonymous");
+            
             imgBg.onload = checkLoaded; imgBg.src = ASSETS.bg;
             imgCards.onload = checkLoaded; imgCards.src = ASSETS.cards;
             imgRunBtn.onload = checkLoaded; imgRunBtn.src = ASSETS.runBtn;
+            imgLvlScreen.onload = checkLoaded; imgLvlScreen.src = ASSETS.lvlScreen;
+            imgPills.onload = checkLoaded; imgPills.src = ASSETS.pills;
+            imgRat.onload = checkLoaded; imgRat.src = ASSETS.rat;
+            imgAxe.onload = checkLoaded; imgAxe.src = ASSETS.axe;
+            imgArmoured.onload = checkLoaded; imgArmoured.src = ASSETS.armoured;
+            imgBlind.onload = checkLoaded; imgBlind.src = ASSETS.blind;
+            imgQueen.onload = checkLoaded; imgQueen.src = ASSETS.queen;
+            imgBackswing.onload = checkLoaded; imgBackswing.src = ASSETS.backswing;
+            imgVictory.onload = checkLoaded; imgVictory.src = ASSETS.victory;
 
+            for(let i=1; i<=7; i++) {
+                const bImg = new Image(); bImg.crossOrigin = "anonymous";
+                bImg.src = `https://christaylor-design.github.io/Dead_Reckoning/assets/Base-upgrades_00${i}.png`;
+                baseImages.push(bImg);
+            }
             window.addEventListener('resize', resize);
-            window.addEventListener('orientationchange', () => setTimeout(resize, 200));
-
             canvas.addEventListener('mousedown', handleStart);
             window.addEventListener('mousemove', handleMove);
             window.addEventListener('mouseup', handleEnd);
-            canvas.addEventListener('touchstart', (e) => { if (e.touches.length === 1) handleStart(e.touches[0]); }, {passive: false});
+            canvas.addEventListener('touchstart', (e) => handleStart(e.touches[0]), {passive: false});
             window.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.touches[0]); }, {passive: false});
             window.addEventListener('touchend', (e) => handleEnd(e.changedTouches[0] || e.touches[0]));
         }
 
-        function checkLoaded() {
-            loadedCount++;
-            if (loadedCount === 3) {
-                state.imagesLoaded = true;
-                initGame();
-                requestAnimationFrame(gameLoop);
-            }
-        }
-
-        function resize() {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            let scale = Math.min(w / UI_RES.w, h / UI_RES.h);
-            canvas.width = UI_RES.w;
-            canvas.height = UI_RES.h;
-            canvas.style.width = (UI_RES.w * scale) + 'px';
-            canvas.style.height = (UI_RES.h * scale) + 'px';
-        }
+        function checkLoaded() { if (++loadedCount === 12) { state.imagesLoaded = true; requestAnimationFrame(gameLoop); } }
 
         function initGame() {
-            state.deck = createDeck();
-            state.playerHP = 20; state.shelterHP = 20;
-            state.medsQuota = 0; state.materialsQuota = 0;
-            state.inventory = [null, null];
-            state.scavengeArea = [null, null, null, null];
-            state.storage = null; state.pocket = null;
-            state.runUsed = false; state.gameActive = true;
-            uiOverlay.style.display = 'none';
-            drawHand();
-            addLog("Mission Start. Secure supplies.");
+            state.currentView = 'game'; state.deck = createDeck();
+            state.medsTarget = 18; state.materialsTarget = 28;
+            if (!state.isEndless) {
+                state.medsTarget = 12 + (state.baseLevel - 1);
+                state.materialsTarget = 22 + (state.baseLevel - 1);
+            }
+            state.playerHP = 20; state.shelterHP = 20; state.medsQuota = 0; state.materialsQuota = 0;
+            state.inventory = [null, null]; state.scavengeArea = [null, null, null, null];
+            state.storage = null; state.pocket = null; state.runUsed = false; state.gameActive = true;
+            state.pillsActive = false; state.radExposure = 3;
+            uiOverlay.style.display = 'none'; drawHand();
+            addLog(`Mission Start. ${state.isEndless ? 'Survival Day ' + (state.survivalStreak + 1) : 'Level ' + state.baseLevel}`);
         }
 
         function checkGameOver() {
             if (state.playerHP <= 0 || state.shelterHP <= 0) {
                 state.gameActive = false;
-                overlayTitle.innerText = "MISSION FAILED";
-                overlayTitle.style.color = "#f00";
-                overlayMsg.innerText = "Dead. The wasteland claims all.";
-                uiOverlay.style.display = 'flex';
-                return true;
+                if (state.isEndless) state.survivalStreak = 0; 
+                overlayTitle.innerText = "MISSION FAILED"; overlayTitle.style.color = "#f00";
+                overlayMsg.innerText = "Dead. The wasteland claims all."; uiOverlay.style.display = 'flex'; return true;
             }
             if (state.deck.length === 0 && state.scavengeArea.every(c => c === null)) {
                 state.gameActive = false;
-                const win = state.medsQuota >= state.medsTarget && state.materialsQuota >= state.materialsTarget;
-                overlayTitle.innerText = win ? "MISSION SUCCESS" : "MISSION FAILED";
-                overlayTitle.style.color = win ? "#0f0" : "#f60";
-                overlayMsg.innerText = win ? "Thriving! Colony secured." : "Survived, but lacked supplies.";
-                uiOverlay.style.display = 'flex';
-                return true;
+                const winMeds = state.medsQuota >= state.medsTarget, winMats = state.materialsQuota >= state.materialsTarget;
+                const success = winMeds && winMats;
+                
+                if (state.isEndless) {
+                    if (success) {
+                        state.survivalStreak++;
+                        state.bestStreak = Math.max(state.bestStreak, state.survivalStreak);
+                    } else {
+                        state.survivalStreak = 0;
+                    }
+                } else {
+                    let pieces = success ? 5 : (winMeds || winMats) ? 3 : 1;
+                    state.upgradePieces += pieces;
+                    if (state.upgradePieces >= 10) { 
+                        if (state.baseLevel < 7) {
+                            state.upgradePieces -= 10; 
+                            state.baseLevel++;
+                            state.pendingUnlock = state.baseLevel; 
+                        } else {
+                            state.upgradePieces = 10;
+                            state.showVictoryScreen = true;
+                        }
+                    }
+                }
+                saveProgression();
+                overlayTitle.innerText = success ? "MISSION SUCCESS" : "MISSION PARTIAL";
+                overlayTitle.style.color = success ? "#0f0" : "#ff0";
+                overlayMsg.innerText = success ? "Returned safely." : "Incomplete delivery. Perimeter weakened."; uiOverlay.style.display = 'flex'; return true;
             }
             return false;
         }
 
         function drawHand() {
             state.avoidsUsedThisHand = 0;
-            for (let i = 0; i < 4; i++) {
-                if (state.scavengeArea[i] === null && state.deck.length > 0) state.scavengeArea[i] = state.deck.shift();
-            }
+            for (let i = 0; i < 4; i++) { if (state.scavengeArea[i] === null && state.deck.length > 0) state.scavengeArea[i] = state.deck.shift(); }
             checkGameOver();
         }
 
-        function checkTurnState() {
-            if (state.scavengeArea.filter(c => c !== null).length <= 1) endHand();
-        }
+        function checkTurnState() { if (state.scavengeArea.filter(c => c !== null).length <= 1) endHand(); }
 
         function endHand() {
+            let blindOnePresent = state.scavengeArea.some(c => c && c.specialName === 'The Blind One');
             if (state.storage) {
                 if (state.storage.suit === 'HEARTS') state.medsQuota += state.storage.power;
                 if (state.storage.suit === 'DIAMONDS') state.materialsQuota += state.storage.power;
                 state.storage = null;
             }
             if (state.deck.length > 0) {
-                state.playerHP -= state.radExposure;
-                addLog(`Radiation spike: -${state.radExposure} HP.`);
+                let exposure = state.radExposure;
+                if (blindOnePresent) { exposure *= 2; addLog("THE BLIND ONE CATALYSES THE RADIATION!", true); }
+                state.playerHP -= exposure;
+                addLog(`Radiation spike: -${exposure} HP.`);
             }
             if (!checkGameOver()) drawHand();
         }
@@ -387,144 +552,258 @@
         function drawCard(card, x, y, w, h, isDragging = false) {
             if (!card) return;
             const sw = 384, sh = 512;
-            const sx = (card.col || 0) * sw;
-            const sy = (card.row || 0) * sh;
             ctx.save();
-            if (isDragging) { ctx.shadowBlur = 30; ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.globalAlpha = 0.9; }
-            ctx.drawImage(imgCards, sx, sy, sw, sh, x, y, w, h);
-            
-            if (card.power !== undefined) {
-                const fontSize = Math.floor(h * 0.12);
-                ctx.font = `bold ${fontSize}px Arial`;
-                ctx.lineWidth = 6; 
-                ctx.strokeStyle = "white"; 
-                ctx.fillStyle = "#111";
-                ctx.textBaseline = "middle";
-
-                // Top Right Value (5% Inset)
-                ctx.textAlign = "right";
-                ctx.strokeText(card.power, x + w * 0.95, y + h * 0.05 + fontSize/2);
-                ctx.fillText(card.power, x + w * 0.95, y + h * 0.05 + fontSize/2);
-
-                // Bottom Left Value (5% Inset)
-                ctx.textAlign = "left";
-                ctx.strokeText(card.power, x + w * 0.05, y + h * 0.95 - fontSize/2);
-                ctx.fillText(card.power, x + w * 0.05, y + h * 0.95 - fontSize/2);
+            if (card.isSpecial || card.hasBuff) {
+                let glowColor = (card.suit === 'CLUBS' && card.isSpecial) ? "#f00" : "#0f0";
+                ctx.shadowBlur = 25; ctx.shadowColor = glowColor; ctx.strokeStyle = glowColor; ctx.lineWidth = 4;
+                ctx.strokeRect(x, y, w, h);
             }
+            if (card.distracted) { ctx.shadowBlur = 30; ctx.shadowColor = "#ff0"; ctx.strokeStyle = "#ff0"; ctx.lineWidth = 6; ctx.strokeRect(x, y, w, h); }
+            if (card.usesLeft > 1) { ctx.shadowBlur = 20; ctx.shadowColor = "#0af"; ctx.strokeStyle = "#0af"; ctx.lineWidth = 8; ctx.strokeRect(x, y, w, h); }
+            if (isDragging) { ctx.shadowBlur = 40; ctx.globalAlpha = 0.9; }
+
+            if (card.isSpecial && card.asset) { ctx.drawImage(card.asset, x, y, w, h); } 
+            else { ctx.drawImage(imgCards, card.col * sw, card.row * sh, sw, sh, x, y, w, h); }
+
+            const currentPower = getZombiePower(card);
+            if (currentPower > 0) {
+                const fontSize = Math.floor(h * 0.12);
+                ctx.font = `bold ${fontSize}px Arial`; ctx.lineWidth = 6; 
+                ctx.strokeStyle = (currentPower > card.power) ? "#0f0" : "white";
+                ctx.fillStyle = "#111"; ctx.textBaseline = "middle";
+                ctx.textAlign = "right"; ctx.strokeText(currentPower, x + w * 0.95, y + h * 0.05 + fontSize/2); ctx.fillText(currentPower, x + w * 0.95, y + h * 0.05 + fontSize/2);
+                ctx.textAlign = "left"; ctx.strokeText(currentPower, x + w * 0.05, y + h * 0.95 - fontSize/2); ctx.fillText(currentPower, x + w * 0.05, y + h * 0.95 - fontSize/2);
+            }
+            if (card.usesLeft > 1) { ctx.fillStyle = "#0af"; ctx.font = "bold 36px Arial"; ctx.textAlign = "center"; ctx.fillText("x" + card.usesLeft, x + w/2, y + h - 40); }
+            if (card.isSpecial && !card.asset) { ctx.fillStyle = (card.suit === 'CLUBS') ? "#f00" : "#0f0"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center"; ctx.fillText(card.specialName, x + w/2, y + h * 0.85); }
             ctx.restore();
+        }
+
+        function getIntelData(level, step) {
+            if (level === 2) return { title: "Anti-rad Pills", desc: "REDUCES RADIATION SPIKE FROM -3 TO -2 HP. [ACTION: HOLD IN HAND/POCKET THEN DROP ON SCAVENGER SLOT]", card: { suit: 'HEARTS', value: 1, power: 0, isSpecial: true, asset: imgPills } };
+            if (level === 3) return { title: "Wind-up Rat", desc: "SOUND-BASED DISTRACTION. DEALS 0 SHELTER DAMAGE IF AVOIDED. ONLY WAY TO BYPASS 'THE BLIND ONE'.", card: { suit: 'DIAMONDS', value: 1, power: 0, isSpecial: true, asset: imgRat } };
+            if (level === 4) {
+                if (step === 0) return { title: "The Axe", desc: "HEAVY COMBAT ASSET. DEALS 12 DAMAGE INSTANTLY. CRITICAL FOR NEUTRALISING HIGH-HP TARGETS.", card: { suit: 'SPADES', value: 1, power: 12, isSpecial: true, asset: imgAxe } };
+                return { title: "Armoured Zombie", desc: "HIGH-RESISTANCE THREAT. HP: 15. DEALS 10 HP DAMAGE IF AVOIDED. REQUIRES AXE OR COMBINED SCAVENGER STRIKES.", card: { suit: 'CLUBS', value: 1, power: 15, isSpecial: true, asset: imgArmoured } };
+            }
+            if (level === 5) return { title: "Back Swing", desc: "WEAPON OPTIMISATION. ALLOWS ANY WEAPON TO BE USED TWICE BEFORE DISCARDING. [ACTION: DROP ON WEAPON]", card: { suit: 'SPADES', value: 2, power: 0, isSpecial: true, asset: imgBackswing } };
+            if (level === 6) return { title: "The Blind One", desc: "CANNOT BE AVOIDED WITHOUT DISTRACTION (RAT). IF LEFT IN SCAVENGE AREA, RADIATION DAMAGE IS DOUBLED.", card: { suit: 'CLUBS', value: 2, power: 8, isSpecial: true, asset: imgBlind } };
+            if (level === 7) return { title: "The Alpha Queen", desc: "OMEGA THREAT. SUPPRESSES RETREAT. BUFFS NEARBY ZOMBIES (+3 PWR). GATES BREACH IF AVOIDED (-15 HP).", card: { suit: 'CLUBS', value: 3, power: 10, isSpecial: true, asset: imgQueen } };
+            return null;
+        }
+
+        function drawDatabaseView() {
+            ctx.fillStyle = "rgba(0,0,0,0.98)"; ctx.fillRect(0,0,UI_RES.w, UI_RES.h);
+            const m = UI.base.unlockModal;
+            const modalX = (UI_RES.w - m.w)/2, modalY = (UI_RES.h - m.h)/2;
+            ctx.fillStyle = "rgba(10, 30, 10, 0.95)"; ctx.strokeStyle = "#0f0"; ctx.lineWidth = 10;
+            ctx.fillRect(modalX, modalY, m.w, m.h); ctx.strokeRect(modalX, modalY, m.w, m.h);
+            ctx.fillStyle = "#0f0"; ctx.font = "bold 60px 'Courier New', monospace"; ctx.textAlign = "left";
+            ctx.fillText("INTEL ARCHIVE: COMPOUND DATABASE", modalX + 80, modalY + 120);
+
+            let entries = [];
+            for (let l = 2; l <= 7; l++) {
+                if (l === 4) { entries.push(getIntelData(4, 0)); entries.push(getIntelData(4, 1)); }
+                else { const d = getIntelData(l, 0); if (d) entries.push(d); }
+            }
+
+            entries.forEach((entry, idx) => {
+                const row = Math.floor(idx / 3); const col = idx % 3;
+                const entryX = modalX + 80 + (col * 570); const entryY = modalY + 180 + (row * 240);
+                drawCard(entry.card, entryX, entryY, 140, 190);
+                ctx.fillStyle = (entry.card.suit === 'CLUBS') ? "#f00" : "#0f0";
+                ctx.font = "bold 32px 'Courier New', monospace"; ctx.fillText(entry.title.toUpperCase(), entryX + 160, entryY + 40);
+                ctx.fillStyle = "#0f0"; ctx.font = "20px 'Courier New', monospace";
+                const words = entry.desc.split(' '); let line = '', textY = entryY + 80;
+                for(let n=0; n<words.length; n++) {
+                    let testLine = line + words[n] + ' ';
+                    if (ctx.measureText(testLine).width > 380 && n > 0) { ctx.fillText(line, entryX + 160, textY); line = words[n] + ' '; textY += 28; }
+                    else line = testLine;
+                }
+                ctx.fillText(line, entryX + 160, textY);
+            });
+            ctx.textAlign = "center"; ctx.fillStyle = "#0f0"; ctx.font = "bold 34px 'Courier New', monospace";
+            ctx.fillText("CLICK ANYWHERE TO RETURN TO COMPOUND", UI_RES.w/2, modalY + m.h - 50);
+        }
+
+        function drawVictoryView() {
+            ctx.fillStyle = "#000"; ctx.fillRect(0,0,UI_RES.w, UI_RES.h);
+            const scale = 0.75;
+            const vw = UI_RES.w * scale, vh = UI_RES.h * scale;
+            ctx.drawImage(imgVictory, (UI_RES.w - vw)/2, 50, vw, vh);
+
+            const b = UI.base.victoryButtons;
+            ctx.fillStyle = "rgba(0, 50, 0, 0.7)"; ctx.fillRect(b.newCompound.x, b.newCompound.y, b.newCompound.w, b.newCompound.h);
+            ctx.strokeStyle = "#0f0"; ctx.lineWidth = 4; ctx.strokeRect(b.newCompound.x, b.newCompound.y, b.newCompound.w, b.newCompound.h);
+            
+            ctx.fillStyle = "rgba(50, 0, 0, 0.7)"; ctx.fillRect(b.endless.x, b.endless.y, b.endless.w, b.endless.h);
+            ctx.strokeStyle = "#f00"; ctx.lineWidth = 4; ctx.strokeRect(b.endless.x, b.endless.y, b.endless.w, b.endless.h);
+            
+            ctx.fillStyle = "white"; ctx.font = "bold 50px 'Courier New', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("START A NEW COMPOUND", b.newCompound.x + b.newCompound.w/2, b.newCompound.y + b.newCompound.h/2);
+            ctx.fillText("ENTER SURVIVAL MODE", b.endless.x + b.endless.w/2, b.endless.y + b.endless.h/2);
+        }
+
+        function drawBaseView() {
+            if (state.showVictoryScreen) { drawVictoryView(); return; }
+            const currentBaseImg = baseImages[state.baseLevel - 1];
+            if (currentBaseImg && currentBaseImg.complete) ctx.drawImage(currentBaseImg, 0, 0, UI_RES.w, UI_RES.h);
+            
+            ctx.fillStyle = "rgba(153, 0, 0, 0.8)"; ctx.fillRect(UI.base.startBtn.x, UI.base.startBtn.y, UI.base.startBtn.w, UI.base.startBtn.h);
+            ctx.fillStyle = "white"; ctx.font = "bold 60px 'Creepster', cursive"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(state.isEndless ? "SURVIVAL MISSION" : "SCAVENGE MISSION", UI.base.startBtn.x + UI.base.startBtn.w/2, UI.base.startBtn.y + UI.base.startBtn.h/2);
+            
+            ctx.drawImage(imgLvlScreen, UI.base.screen.x, UI.base.screen.y, UI.base.screen.w, UI.base.screen.h);
+            ctx.fillStyle = "#0f0"; ctx.font = "bold 44px 'Courier New', monospace"; ctx.textAlign = "center";
+            ctx.fillText(state.baseLevel, UI.base.lvlNum.x + UI.base.lvlNum.w/2, UI.base.lvlNum.y + UI.base.lvlNum.h/2);
+            ctx.fillText(state.isEndless ? "MAX" : `${state.upgradePieces}/10`, UI.base.upgradeTxt.x + UI.base.upgradeTxt.w/2, UI.base.upgradeTxt.y + UI.base.upgradeTxt.h/2);
+
+            if (state.isEndless) {
+                ctx.save(); ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.font = "bold 44px 'Courier New', monospace";
+                ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(20, 20, 550, 140);
+                ctx.fillStyle = "#0f0"; ctx.fillText(`SURVIVAL DAYS: ${state.survivalStreak}`, 40, 40);
+                ctx.fillStyle = "#ff0"; ctx.fillText(`BEST RECORD:   ${state.bestStreak}`, 40, 90);
+                ctx.restore();
+            }
+            
+            ctx.fillStyle = "rgba(0, 255, 0, 0.1)"; ctx.fillRect(UI.base.databaseBtn.x, UI.base.databaseBtn.y, UI.base.databaseBtn.w, UI.base.databaseBtn.h);
+            ctx.strokeStyle = "#0f0"; ctx.lineWidth = 2; ctx.strokeRect(UI.base.databaseBtn.x, UI.base.databaseBtn.y, UI.base.databaseBtn.w, UI.base.databaseBtn.h);
+            ctx.fillStyle = "#0f0"; ctx.font = "bold 44px 'Courier New', monospace"; ctx.textAlign = "center";
+            ctx.fillText("INTEL DATABASE", UI.base.databaseBtn.x + UI.base.databaseBtn.w/2, UI.base.databaseBtn.y + UI.base.databaseBtn.h/2);
+
+            const b = UI.base.progressBar; const pct = state.isEndless ? 1 : state.upgradePieces / 10; const inset = 6;
+            ctx.globalAlpha = 0.1; ctx.fillStyle = "#0f0"; ctx.fillRect(b.x, b.y, b.w, b.h);
+            ctx.globalAlpha = 0.7 + Math.random() * 0.3; ctx.fillStyle = "#0f0";
+            if (pct > 0) ctx.fillRect(b.x + inset, b.y + inset, (b.w - inset*2) * pct, b.h - inset*2);
+            ctx.globalAlpha = 1.0;
+
+            if (state.showUnlockOverlay) {
+                ctx.fillStyle = "rgba(0,0,0,0.9)"; ctx.fillRect(0,0,UI_RES.w, UI_RES.h);
+                const m = UI.base.unlockModal; const modalX = (UI_RES.w - m.w)/2, modalY = (UI_RES.h - m.h)/2;
+                const data = getIntelData(state.pendingUnlock, state.revealStep);
+                ctx.fillStyle = "rgba(10, 30, 10, 0.95)"; ctx.strokeStyle = "#0f0"; ctx.lineWidth = 10;
+                ctx.fillRect(modalX, modalY, m.w, m.h); ctx.strokeRect(modalX, modalY, m.w, m.h);
+                ctx.fillStyle = "#0f0"; ctx.font = "bold 60px 'Courier New', monospace"; ctx.textAlign = "left";
+                ctx.fillText("INTEL REPORT: NEW UNLOCK DETECTED", modalX + 100, modalY + 150);
+                drawCard(data.card, modalX + 150, modalY + 220, 211 * 2.2, 287 * 2.2);
+                ctx.font = "bold 50px 'Courier New', monospace"; ctx.fillText(data.title.toUpperCase(), modalX + 750, modalY + 280);
+                ctx.font = "38px 'Courier New', monospace";
+                const words = data.desc.split(' '); let line = '', textY = modalY + 380;
+                for(let n=0; n<words.length; n++) {
+                    let testLine = line + words[n] + ' ';
+                    if (ctx.measureText(testLine).width > 900 && n > 0) { ctx.fillText(line, modalX + 750, textY); line = words[n] + ' '; textY += 55; }
+                    else line = testLine;
+                }
+                ctx.fillText(line, modalX + 750, textY);
+                ctx.font = "bold 40px 'Courier New', monospace"; ctx.fillText("CLICK ANYWHERE TO INITIALISE DATABASE ENTRY", modalX + 750, modalY + m.h - 80);
+            }
+            if (state.showDatabase) drawDatabaseView();
         }
 
         function drawUI() {
             if (!state.imagesLoaded) return;
+            if (state.currentView === 'base') { drawBaseView(); return; }
             ctx.drawImage(imgBg, 0, 0, UI_RES.w, UI_RES.h);
-            
-            ctx.textAlign = "center";
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = "#fff";
-            ctx.font = "bold 36px monospace";
+
+            if (isQueenPresent()) {
+                ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = "#000"; ctx.fillRect(UI.runBtn.x, UI.runBtn.y, UI.runBtn.w, UI.runBtn.h);
+                ctx.strokeStyle = "#f00"; ctx.lineWidth = 4; ctx.strokeRect(UI.runBtn.x, UI.runBtn.y, UI.runBtn.w, UI.runBtn.h); ctx.restore();
+            } else if (state.runUsed) {
+                 ctx.drawImage(imgRunBtn, UI.runBtn.x, UI.runBtn.y, UI.runBtn.w, UI.runBtn.h);
+            }
+
+            if (state.draggingCard && state.draggingCard.card.isSpecial && state.draggingCard.origin !== 'scavenge') {
+                const name = state.draggingCard.card.specialName;
+                ctx.save(); ctx.shadowBlur = 30; ctx.lineWidth = 8;
+                let highlightColor = (state.draggingCard.card.suit === 'CLUBS') ? "#f00" : "#0f0";
+                ctx.shadowColor = highlightColor; ctx.strokeStyle = highlightColor;
+                if (name === 'Anti-rad Pills') ctx.strokeRect(UI.actionSlots[0].x, UI.actionSlots[0].y, UI.actionSlots[0].w, UI.actionSlots[0].h);
+                if (name === 'The Axe' || name === 'Wind-up Rat') {
+                    ctx.strokeStyle = "#f00"; ctx.shadowColor = "#f00";
+                    state.scavengeArea.forEach((c,i) => { if(c && (c.suit === 'CLUBS' || c.isSpecial)) ctx.strokeRect(UI.scavengeSlots[i].x, UI.scavengeSlots[i].y, UI.scavengeSlots[i].w, UI.scavengeSlots[i].h); });
+                }
+                if (name === 'Back Swing') { 
+                    ctx.strokeStyle = "#0f0"; ctx.shadowColor = "#0f0";
+                    UI.inventorySlots.forEach((s, i) => { if (state.inventory[i] && state.inventory[i].suit === 'SPADES') ctx.strokeRect(s.x, s.y, s.w, s.h); });
+                    if (state.storage && state.storage.suit === 'SPADES') ctx.strokeRect(UI.storageSlot.x, UI.storageSlot.y, UI.storageSlot.w, UI.storageSlot.h);
+                }
+                ctx.restore();
+            }
+
+            if (state.pillsActive) { ctx.save(); ctx.shadowBlur = 15; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "rgba(0,255,255,0.5)"; ctx.lineWidth = 5; ctx.strokeRect(UI.actionSlots[0].x, UI.actionSlots[0].y, UI.actionSlots[0].w, UI.actionSlots[0].h); ctx.restore(); }
+
+            ctx.textAlign = "center"; ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.font = "bold 36px monospace";
             ctx.fillText(state.deck.length, UI.text.deck.x + UI.text.deck.w/2, UI.text.deck.y + UI.text.deck.h/2 + 15);
-            
-            ctx.globalAlpha = 0.8;
-            ctx.font = "bold 36px monospace";
-            ctx.fillText(`${state.medsQuota}/${state.medsTarget}`, UI.text.meds.x + UI.text.meds.w/2, UI.text.meds.y + UI.text.meds.h/2 + 15);
+            ctx.globalAlpha = 0.8; ctx.fillText(`${state.medsQuota}/${state.medsTarget}`, UI.text.meds.x + UI.text.meds.w/2, UI.text.meds.y + UI.text.meds.h/2 + 15);
             ctx.fillText(`${state.materialsQuota}/${state.materialsTarget}`, UI.text.materials.x + UI.text.materials.w/2, UI.text.materials.y + UI.text.materials.h/2 + 15);
             ctx.globalAlpha = 1;
 
-            const box = UI.helpScreen;
-            const padding = 20;
-            const maxWidth = box.w - (padding * 2);
-            const lineHeight = 35;
-            let curY = box.y + 50;
-            ctx.fillStyle = state.logColor; 
-            ctx.font = "28px 'Courier New', monospace"; 
-            ctx.textAlign = "left";
-            const words = ("> " + state.logText).split(' ');
-            let line = '';
-            for(let n = 0; n < words.length; n++) {
+            const box = UI.helpScreen; const words = ("> " + state.logText).split(' '); let line = '', curY = box.y + 50;
+            ctx.fillStyle = state.logColor; ctx.font = "28px 'Courier New', monospace"; ctx.textAlign = "left";
+            for(let n=0; n<words.length; n++) {
                 let testLine = line + words[n] + ' ';
-                let metrics = ctx.measureText(testLine);
-                let testWidth = metrics.width;
-                if (testWidth > maxWidth && n > 0) {
-                    ctx.fillText(line, box.x + padding, curY);
-                    line = words[n] + ' ';
-                    curY += lineHeight;
-                } else {
-                    line = testLine;
-                }
-                if (curY > box.y + box.h - padding) break;
+                if (ctx.measureText(testLine).width > box.w - 40 && n > 0) { ctx.fillText(line, box.x + 20, curY); line = words[n] + ' '; curY += 35; }
+                else line = testLine;
             }
-            if (curY <= box.y + box.h - padding) {
-                ctx.fillText(line, box.x + padding, curY);
-            }
+            ctx.fillText(line, box.x + 20, curY);
 
             Object.values(UI.bars).forEach(b => {
-                const val = state[b.val];
-                const pct = Math.max(0, val / b.max);
-                ctx.globalAlpha = 0.3;
-                ctx.fillStyle = b.color;
-                ctx.fillRect(b.x, b.y, b.w * pct, b.h);
-                ctx.globalAlpha = 0.8;
-                ctx.fillStyle = "#fff";
-                ctx.font = "bold 56px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText(`${b.label}: ${Math.max(0, val)} / 20`, b.x + b.w/2, b.y + b.h/2 + 20);
+                const pct = Math.max(0, state[b.val] / b.max);
+                ctx.globalAlpha = 0.3; ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.w * pct, b.h);
+                ctx.globalAlpha = 0.8; ctx.fillStyle = "#fff"; ctx.font = "bold 56px Arial"; ctx.textAlign = "center";
+                ctx.fillText(`${b.label}: ${Math.max(0, state[b.val])} / 20`, b.x + b.w/2, b.y + b.h/2 + 20);
             });
             ctx.globalAlpha = 1;
-
-            if (state.runUsed) {
-                ctx.drawImage(imgRunBtn, UI.runBtn.x, UI.runBtn.y, UI.runBtn.w, UI.runBtn.h);
-            }
 
             UI.scavengeSlots.forEach((s, i) => drawCard(state.scavengeArea[i], s.x, s.y, s.w, s.h));
             UI.inventorySlots.forEach((s, i) => drawCard(state.inventory[i], s.x, s.y, s.w, s.h));
             drawCard(state.storage, UI.storageSlot.x, UI.storageSlot.y, UI.storageSlot.w, UI.storageSlot.h);
             drawCard(state.pocket, UI.pocketSlot.x, UI.pocketSlot.y, UI.pocketSlot.w, UI.pocketSlot.h);
-
-            if (state.draggingCard) {
-                const c = state.draggingCard.card;
-                drawCard(c, state.mouse.x - state.dragOffset.x, state.mouse.y - state.dragOffset.y, 211, 287, true);
-            }
+            if (state.draggingCard) drawCard(state.draggingCard.card, state.mouse.x - state.dragOffset.x, state.mouse.y - state.dragOffset.y, 211, 287, true);
         }
 
         function getEventPos(e) {
             const rect = canvas.getBoundingClientRect();
-            const scaleX = UI_RES.w / rect.width;
-            const scaleY = UI_RES.h / rect.height;
-            return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+            return { x: (e.clientX - rect.left) * (UI_RES.w / rect.width), y: (e.clientY - rect.top) * (UI_RES.h / rect.height) };
         }
 
         function handleStart(e) {
-            if (!state.gameActive || instructionsOverlay.style.display === 'flex') return;
             const m = getEventPos(e); state.mouse = m;
-
-            if (m.x > UI.runBtn.x && m.x < UI.runBtn.x + UI.runBtn.w && m.y > UI.runBtn.y && m.y < UI.runBtn.y + UI.runBtn.h && !state.runUsed) {
-                triggerRun();
+            if (state.currentView === 'base') {
+                if (state.showVictoryScreen) {
+                    const b = UI.base.victoryButtons;
+                    if (m.x > b.newCompound.x && m.x < b.newCompound.x + b.newCompound.w && m.y > b.newCompound.y && m.y < b.newCompound.y + b.newCompound.h) {
+                        state.baseLevel = 1; state.upgradePieces = 0; state.isEndless = false; state.showVictoryScreen = false; state.survivalStreak = 0; saveProgression(); return;
+                    }
+                    if (m.x > b.endless.x && m.x < b.endless.x + b.endless.w && m.y > b.endless.y && m.y < b.endless.y + b.endless.h) {
+                        state.isEndless = true; state.showVictoryScreen = false; saveProgression(); return;
+                    }
+                    return;
+                }
+                if (state.showUnlockOverlay) { 
+                    if (state.pendingUnlock === 4 && state.revealStep === 0) state.revealStep = 1; 
+                    else { state.showUnlockOverlay = false; state.pendingUnlock = null; state.revealStep = 0; }
+                    return; 
+                }
+                if (state.showDatabase) { state.showDatabase = false; return; }
+                if (m.x > UI.base.startBtn.x && m.x < UI.base.startBtn.x + UI.base.startBtn.w && m.y > UI.base.startBtn.y && m.y < UI.base.startBtn.y + UI.base.startBtn.h) initGame();
+                if (m.x > UI.base.databaseBtn.x && m.x < UI.base.databaseBtn.x + UI.base.databaseBtn.w && m.y > UI.base.databaseBtn.y && m.y < UI.base.databaseBtn.y + UI.base.databaseBtn.h) state.showDatabase = true;
                 return;
             }
-
-            UI.scavengeSlots.forEach((s, i) => {
-                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.scavengeArea[i]) {
-                    state.draggingCard = { card: state.scavengeArea[i], origin: 'scavenge', idx: i };
-                    state.dragOffset = { x: m.x - s.x, y: m.y - s.y }; state.scavengeArea[i] = null;
+            if (!state.gameActive) return;
+            if (m.x > UI.runBtn.x && m.x < UI.runBtn.x + UI.runBtn.w && m.y > UI.runBtn.y && m.y < UI.runBtn.y + UI.runBtn.h && !state.runUsed) {
+                if (isQueenPresent()) { addLog("THE ALPHA QUEEN SUPPRESSES ALL RETREAT. FIGHT OR DIE.", true); } else { triggerRun(); }
+                return; 
+            }
+            [...UI.scavengeSlots.map((s,i)=>({s,i,o:'scavenge'})), ...UI.inventorySlots.map((s,i)=>({s,i,o:'inventory'})), {s:UI.storageSlot,o:'storage'}, {s:UI.pocketSlot,o:'pocket'}].forEach(item => {
+                const {s, i, o} = item;
+                const card = o==='scavenge'?state.scavengeArea[i]:o==='inventory'?state.inventory[i]:o==='storage'?state.storage:state.pocket;
+                if (card && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                    state.draggingCard = { card, origin: o, idx: i };
+                    state.dragOffset = { x: m.x - s.x, y: m.y - s.y };
+                    if(o==='scavenge')state.scavengeArea[i]=null; else if(o==='inventory')state.inventory[i]=null; else if(o==='storage')state.storage=null; else state.pocket=null;
                 }
             });
-
-            UI.inventorySlots.forEach((s, i) => {
-                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.inventory[i]) {
-                    state.draggingCard = { card: state.inventory[i], origin: 'inventory', idx: i };
-                    state.dragOffset = { x: m.x - s.x, y: m.y - s.y }; state.inventory[i] = null;
-                }
-            });
-
-            if (m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h && state.storage) {
-                state.draggingCard = { card: state.storage, origin: 'storage' };
-                state.dragOffset = { x: m.x - UI.storageSlot.x, y: m.y - UI.storageSlot.y }; state.storage = null;
-            }
-
-            if (m.x > UI.pocketSlot.x && m.x < UI.pocketSlot.x + UI.pocketSlot.w && m.y > UI.pocketSlot.y && m.y < UI.pocketSlot.y + UI.pocketSlot.h && state.pocket) {
-                state.draggingCard = { card: state.pocket, origin: 'pocket' };
-                state.dragOffset = { x: m.x - UI.pocketSlot.x, y: m.y - UI.pocketSlot.y }; state.pocket = null;
-            }
         }
 
         function handleMove(e) { state.mouse = getEventPos(e); }
@@ -534,81 +813,110 @@
             const m = state.mouse, card = state.draggingCard.card, origin = state.draggingCard.origin;
             let placed = false;
 
-            state.scavengeArea.forEach((target, i) => {
-                const s = UI.scavengeSlots[i];
-                if (target && target.suit === 'CLUBS' && card.suit === 'SPADES' && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
-                    if (origin !== 'scavenge') {
-                        if (card.power >= target.power) { addLog("Zombie killed!"); state.scavengeArea[i] = null; }
-                        else { target.power -= card.power; addLog("Zombie weakened."); }
-                        placed = true;
-                    } else addLog("Pick up weapon first!", true);
-                }
-            });
-
-            if (!placed && m.x > UI.discardSlot.x - 20 && m.x < UI.discardSlot.x + UI.discardSlot.w + 20 && m.y > UI.discardSlot.y - 20 && m.y < UI.discardSlot.y + UI.discardSlot.h + 20) {
-                if (card.suit === 'CLUBS') {
-                    addLog("You can't scrap a threat!", true);
-                } else if (origin !== 'scavenge') {
-                    addLog("Item scrapped.");
-                    placed = true;
-                } else {
-                    addLog("Pick up item first!", true);
-                }
-            }
-
-            if (!placed) UI.actionSlots.forEach(s => {
-                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
-                    if (card.suit === 'DIAMONDS') {
-                        addLog("Materials belong at the Shelter station!", true);
-                    } else if (card.suit === 'SPADES') {
-                        addLog("Weapons must be used directly on threats!", true);
-                    } else {
-                        if (s.type === 'scavenger') {
-                            if (origin !== 'scavenge' && card.suit === 'HEARTS') { state.playerHP = Math.min(20, state.playerHP + card.power); placed = true; }
-                        }
-                        if (!placed && card.suit === 'CLUBS') {
-                            if (s.type === 'scavenger') { state.playerHP -= card.power; placed = true; }
-                            else if (s.type === 'avoid' && state.avoidsUsedThisHand < 1) { state.shelterHP -= 5; state.avoidsUsedThisHand++; placed = true; }
-                        }
-                    }
-                }
-            });
-
-            if (!placed && m.x > UI.fixShelterSlot.x && m.x < UI.fixShelterSlot.x + UI.fixShelterSlot.w && m.y > UI.fixShelterSlot.y && m.y < UI.fixShelterSlot.y + UI.fixShelterSlot.h) {
-                if (origin !== 'scavenge' && card.suit === 'DIAMONDS') { state.shelterHP = Math.min(20, state.shelterHP + card.power); placed = true; }
-                else if (card.suit !== 'DIAMONDS') addLog("Only materials fit here!", true);
-                else addLog("Pick up materials first!", true);
-            }
-
-            if (!placed && m.x > UI.pocketSlot.x && m.x < UI.pocketSlot.x + UI.pocketSlot.w && m.y > UI.pocketSlot.y && m.y < UI.pocketSlot.y + UI.pocketSlot.h && !state.pocket) {
-                if (card.isSpecial) { state.pocket = card; placed = true; }
-                else { addLog("Only unique items fit here!", true); }
-            }
-
-            if (!placed) {
-                UI.inventorySlots.forEach((s, i) => {
-                    if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
-                        if (card.suit === 'CLUBS') {
-                            addLog("You don't want to hold hands with a zombie", true);
-                        } else if (!state.inventory[i]) {
-                            state.inventory[i] = card; placed = true;
+            if (card.isSpecial) {
+                state.scavengeArea.forEach((target, i) => {
+                    const s = UI.scavengeSlots[i];
+                    if (target && (target.suit === 'CLUBS' || target.isSpecial) && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                        if (origin === 'scavenge') { addLog("Secure the asset in your inventory or pocket first!", true); }
+                        else {
+                            if (card.specialName === 'The Axe') {
+                                target.power = Math.max(0, target.power - 12);
+                                if (target.power <= 0) { state.scavengeArea[i] = null; addLog("Axe hit! Threat neutralised."); }
+                                else addLog("Axe hit! Threat weakened.");
+                                if (card.usesLeft > 1) { card.usesLeft--; addLog(`Axe remains sharp. ${card.usesLeft} use remaining.`); placed = false; } else { placed = true; }
+                            } else if (card.specialName === 'Wind-up Rat') {
+                                target.distracted = true; addLog("Wind-up rat deployed."); placed = true;
+                            }
                         }
                     }
                 });
-                
-                if (!placed && m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h) {
-                    if (card.suit === 'CLUBS') {
-                        addLog("You don't want to hold hands with a zombie", true);
-                    } else if (!state.storage) {
-                        state.storage = card; placed = true;
+                if (!placed && card.specialName === 'Anti-rad Pills') {
+                    const s = UI.actionSlots[0];
+                    if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                        if (origin === 'scavenge') { addLog("Secure the pills in your inventory or pocket first!", true); }
+                        else { state.pillsActive = true; state.radExposure = 2; addLog("Resistance increased."); placed = true; }
+                    }
+                }
+                if (!placed && card.specialName === 'Back Swing') {
+                    if (origin === 'scavenge') { addLog("Secure the utility card first!", true); }
+                    else {
+                        UI.inventorySlots.forEach((s, i) => {
+                            if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.inventory[i] && state.inventory[i].suit === 'SPADES') {
+                                state.inventory[i].usesLeft = 2; addLog("Weapon optimised for dual use."); placed = true;
+                            }
+                        });
+                        if (!placed && m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h && state.storage && state.storage.suit === 'SPADES') {
+                            state.storage.usesLeft = 2; addLog("Stored weapon optimised."); placed = true;
+                        }
                     }
                 }
             }
-
-            if (!placed && card.suit === 'HEARTS' && m.x > UI.bars.player.x && m.x < UI.bars.player.x + UI.bars.player.w && m.y > UI.bars.player.y && m.y < UI.bars.player.y + UI.bars.player.h && origin !== 'scavenge') {
-                state.playerHP = Math.min(20, state.playerHP + card.power); placed = true;
+            if (!placed) state.scavengeArea.forEach((target, i) => {
+                const s = UI.scavengeSlots[i];
+                if (target && (target.suit === 'CLUBS' || target.isSpecial) && card.suit === 'SPADES' && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                    if (origin !== 'scavenge') {
+                        const targetPower = getZombiePower(target);
+                        if (card.power >= targetPower) { 
+                            addLog("Threat neutralised!"); state.scavengeArea[i] = null; 
+                            if (card.usesLeft > 1) { card.usesLeft--; placed = false; return; }
+                            placed = true;
+                        } else { 
+                            target.power -= card.power; addLog("Threat weakened.");
+                            if (card.usesLeft > 1) { card.usesLeft--; placed = false; return; }
+                            placed = true; 
+                        }
+                    } else addLog("Pick up weapon first!", true);
+                }
+            });
+            if (!placed && m.x > UI.discardSlot.x - 20 && m.x < UI.discardSlot.x + UI.discardSlot.w + 20 && m.y > UI.discardSlot.y - 20 && m.y < UI.discardSlot.y + UI.discardSlot.h + 20) {
+                if (card.suit === 'CLUBS' || card.isSpecial) addLog("Can't scrap a threat!", true);
+                else if (origin !== 'scavenge') { addLog("Scrapped."); placed = true; }
+                else addLog("Pick up item first!", true);
             }
-
+            if (!placed) UI.actionSlots.forEach(s => {
+                if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                    if (card.suit === 'DIAMONDS') addLog("Belongs at Shelter station!", true);
+                    else if (card.suit === 'SPADES') addLog("Use directly on threats!", true);
+                    else if (s.type === 'scavenger' && card.suit === 'HEARTS' && origin !== 'scavenge') { state.playerHP = Math.min(20, state.playerHP + card.power); placed = true; }
+                    else if (card.suit === 'CLUBS' || card.isSpecial) {
+                        if (s.type === 'avoid' && card.specialName === 'The Blind One' && !card.distracted) { addLog("THE BLIND ONE HEARS YOU! You cannot avoid them without a distraction.", true); return; }
+                        const targetPower = getZombiePower(card);
+                        if (s.type === 'scavenger') { state.playerHP -= targetPower; placed = true; }
+                        else if (s.type === 'avoid' && state.avoidsUsedThisHand < 1) { 
+                            if (!card.distracted) {
+                                const dmg = (card.specialName === 'The Alpha Queen') ? 15 : (card.specialName === 'Armoured Zombie') ? 10 : 5;
+                                state.shelterHP -= dmg;
+                                if (dmg === 15) addLog("THE ALPHA QUEEN CRUSHES THE SHELTER GATES! -15 HP.", true);
+                                else if (dmg === 10) addLog("ARMOURED ZOMBIE BREACHED THE PERIMETER! -10 HP.", true);
+                                else addLog("Zombie avoided at cost of shelter integrity.");
+                            } else { addLog("Zombie distracted! Shelter secured."); }
+                            state.avoidsUsedThisHand++; placed = true; 
+                        }
+                    }
+                }
+            });
+            if (!placed && m.x > UI.fixShelterSlot.x && m.x < UI.fixShelterSlot.x + UI.fixShelterSlot.w && m.y > UI.fixShelterSlot.y && m.y < UI.fixShelterSlot.y + UI.fixShelterSlot.h) {
+                if (origin !== 'scavenge' && card.suit === 'DIAMONDS') { state.shelterHP = Math.min(20, state.shelterHP + card.power); placed = true; }
+                else addLog("Only materials fit here!", true);
+            }
+            if (!placed && m.x > UI.pocketSlot.x && m.x < UI.pocketSlot.x + UI.pocketSlot.w && m.y > UI.pocketSlot.y && m.y < UI.pocketSlot.y + UI.pocketSlot.h && !state.pocket) {
+                if (card.isSpecial) { state.pocket = card; placed = true; }
+                else addLog("Only unique items fit here!", true);
+            }
+            if (!placed) {
+                UI.inventorySlots.forEach((s, i) => {
+                    if (!placed && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
+                        if (card.suit === 'CLUBS' || card.isSpecial) addLog("Zombie held hands!", true);
+                        else if (!state.inventory[i]) { state.inventory[i] = card; placed = true; }
+                    }
+                });
+                if (!placed && m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h) {
+                    if (card.suit === 'CLUBS' || card.isSpecial) addLog("Zombie in pack!", true);
+                    else if (card.suit === 'SPADES') addLog("No room for weapons.", true);
+                    else if (!state.storage) { state.storage = card; placed = true; }
+                }
+            }
+            if (!placed && card.suit === 'HEARTS' && m.x > UI.bars.player.x && m.x < UI.bars.player.x + UI.bars.player.w && m.y > UI.bars.player.y && m.y < UI.bars.player.y + UI.bars.player.h && origin !== 'scavenge') { state.playerHP = Math.min(20, state.playerHP + card.power); placed = true; }
             if (!placed) {
                 if (origin === 'scavenge') state.scavengeArea[state.draggingCard.idx] = card;
                 else if (origin === 'inventory') state.inventory[state.draggingCard.idx] = card;
@@ -619,19 +927,13 @@
         }
 
         function triggerRun() {
-            const currentScavenge = state.scavengeArea.filter(c => c !== null);
-            if (currentScavenge.length === 0 && state.deck.length === 0) return;
-            state.deck.push(...currentScavenge); shuffle(state.deck);
-            state.scavengeArea = [null,null,null,null]; 
-            state.runUsed = true; 
-            addLog("Tactical retreat successful. You've escaped the encounter, but your energy is spent. No more running this mission.");
-            drawHand();
+            const current = state.scavengeArea.filter(c => c !== null);
+            if (current.length === 0 && state.deck.length === 0) return;
+            state.deck.push(...current); shuffle(state.deck); state.scavengeArea = [null,null,null,null]; state.runUsed = true; 
+            addLog("Retreat successful."); drawHand();
         }
 
-        function gameLoop() {
-            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, UI_RES.w, UI_RES.h);
-            drawUI(); requestAnimationFrame(gameLoop);
-        }
+        function gameLoop() { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, UI_RES.w, UI_RES.h); drawUI(); requestAnimationFrame(gameLoop); }
         window.onload = init;
     </script>
 </body>
