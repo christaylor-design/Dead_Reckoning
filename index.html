@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -107,15 +107,15 @@
         }
 
         #instructions-overlay {
-            cursor: pointer;
             z-index: 150;
         }
 
         #instruction-img {
-            max-width: 90%;
-            max-height: 90%;
+            max-width: 85%;
+            max-height: 70%;
             box-shadow: 0 0 30px rgba(0,0,0,1);
             border: 2px solid #444;
+            cursor: pointer;
         }
 
         .zombie-font { font-family: 'Creepster', cursive; }
@@ -144,6 +144,7 @@
             color: #fff; 
             padding: 10px;
             z-index: 160;
+            cursor: pointer;
         }
 
         #dev-tools {
@@ -151,7 +152,7 @@
             top: 10px;
             right: 10px;
             z-index: 2000;
-            display: none; /* HIDDEN BY DEFAULT */
+            display: none;
             flex-direction: column;
             gap: 5px;
             background: rgba(0,0,0,0.5);
@@ -198,9 +199,13 @@
             </div>
         </div>
 
-        <div id="instructions-overlay" onclick="toggleInstructions(false)">
-            <span class="close-help">×</span>
-            <img id="instruction-img" src="https://christaylor-design.github.io/Dead_Reckoning/assets/Instruction%20board.png" alt="Survival Guide">
+        <div id="instructions-overlay">
+            <span class="close-help" onclick="toggleInstructions(false)">×</span>
+            <img id="instruction-img" src="https://christaylor-design.github.io/Dead_Reckoning/assets/Instruction%20board.png" alt="Survival Guide" onclick="toggleInstructions(false)">
+            <div style="margin-top: 30px;">
+                <button class="btn" style="background: #444;" onclick="returnToBaseFromHelp()">Back to Base</button>
+                <button class="btn" onclick="toggleInstructions(false)">Resume Scavenge</button>
+            </div>
         </div>
     </div>
 
@@ -263,7 +268,7 @@
             logColor: "#0f0",
             radExposure: 3,
             pillsActive: false,
-            isDevMode: false // FLAG TO TRACK IF DEV TOOLS SHOULD BE SHOWN
+            isDevMode: false
         };
 
         const UI = {
@@ -391,11 +396,18 @@
 
         function returnToBase() { 
             state.currentView = 'base'; 
+            state.gameActive = false;
             uiOverlay.style.display = 'none'; 
             if (state.pendingUnlock && state.pendingUnlock > 1) {
                 state.showUnlockOverlay = true;
                 state.revealStep = 0;
             }
+        }
+
+        function returnToBaseFromHelp() {
+            toggleInstructions(false);
+            returnToBase();
+            addLog("Mission aborted. Returned to compound.");
         }
 
         function addLog(msg, isError = false) { state.logText = msg; state.logColor = isError ? '#f33' : '#0f0'; }
@@ -425,6 +437,19 @@
                 }
             });
             return shuffle(deck);
+        }
+
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: (e.clientX - rect.left) * (UI_RES.w / rect.width), y: (e.clientY - rect.top) * (UI_RES.h / rect.height) };
         }
 
         function resize() {
@@ -602,7 +627,8 @@
             ctx.fillText("INTEL ARCHIVE: COMPOUND DATABASE", modalX + 80, modalY + 120);
 
             let entries = [];
-            for (let l = 2; l <= 7; l++) {
+            // FILTER BY CURRENT BASE LEVEL PROGRESSION
+            for (let l = 2; l <= state.baseLevel; l++) {
                 if (l === 4) { entries.push(getIntelData(4, 0)); entries.push(getIntelData(4, 1)); }
                 else { const d = getIntelData(l, 0); if (d) entries.push(d); }
             }
@@ -760,11 +786,6 @@
             drawCard(state.storage, UI.storageSlot.x, UI.storageSlot.y, UI.storageSlot.w, UI.storageSlot.h);
             drawCard(state.pocket, UI.pocketSlot.x, UI.pocketSlot.y, UI.pocketSlot.w, UI.pocketSlot.h);
             if (state.draggingCard) drawCard(state.draggingCard.card, state.mouse.x - state.dragOffset.x, state.mouse.y - state.dragOffset.y, 211, 287, true);
-        }
-
-        function getEventPos(e) {
-            const rect = canvas.getBoundingClientRect();
-            return { x: (e.clientX - rect.left) * (UI_RES.w / rect.width), y: (e.clientY - rect.top) * (UI_RES.h / rect.height) };
         }
 
         function handleStart(e) {
