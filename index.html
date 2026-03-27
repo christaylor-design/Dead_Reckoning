@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -152,7 +152,7 @@
             top: 10px;
             right: 10px;
             z-index: 2000;
-            display: none;
+            display: none; 
             flex-direction: column;
             gap: 5px;
             background: rgba(0,0,0,0.5);
@@ -584,7 +584,10 @@
                 ctx.strokeRect(x, y, w, h);
             }
             if (card.distracted) { ctx.shadowBlur = 30; ctx.shadowColor = "#ff0"; ctx.strokeStyle = "#ff0"; ctx.lineWidth = 6; ctx.strokeRect(x, y, w, h); }
-            if (card.usesLeft > 1) { ctx.shadowBlur = 20; ctx.shadowColor = "#0af"; ctx.strokeStyle = "#0af"; ctx.lineWidth = 8; ctx.strokeRect(x, y, w, h); }
+            if (card.usesLeft > 1) {
+                ctx.shadowBlur = 20; ctx.shadowColor = "#0af"; ctx.strokeStyle = "#0af"; ctx.lineWidth = 8;
+                ctx.strokeRect(x, y, w, h);
+            }
             if (isDragging) { ctx.shadowBlur = 40; ctx.globalAlpha = 0.9; }
 
             if (card.isSpecial && card.asset) { ctx.drawImage(card.asset, x, y, w, h); } 
@@ -627,7 +630,6 @@
             ctx.fillText("INTEL ARCHIVE: COMPOUND DATABASE", modalX + 80, modalY + 120);
 
             let entries = [];
-            // FILTER BY CURRENT BASE LEVEL PROGRESSION
             for (let l = 2; l <= state.baseLevel; l++) {
                 if (l === 4) { entries.push(getIntelData(4, 0)); entries.push(getIntelData(4, 1)); }
                 else { const d = getIntelData(l, 0); if (d) entries.push(d); }
@@ -750,8 +752,10 @@
                 }
                 if (name === 'Back Swing') { 
                     ctx.strokeStyle = "#0f0"; ctx.shadowColor = "#0f0";
-                    UI.inventorySlots.forEach((s, i) => { if (state.inventory[i] && state.inventory[i].suit === 'SPADES') ctx.strokeRect(s.x, s.y, s.w, s.h); });
+                    // HIGHLIGHT ARMOURED AXE IN POCKET OR HAND
+                    UI.inventorySlots.forEach((s, i) => { if (state.inventory[i] && (state.inventory[i].suit === 'SPADES' || state.inventory[i].specialName === 'The Axe')) ctx.strokeRect(s.x, s.y, s.w, s.h); });
                     if (state.storage && state.storage.suit === 'SPADES') ctx.strokeRect(UI.storageSlot.x, UI.storageSlot.y, UI.storageSlot.w, UI.storageSlot.h);
+                    if (state.pocket && state.pocket.specialName === 'The Axe') ctx.strokeRect(UI.pocketSlot.x, UI.pocketSlot.y, UI.pocketSlot.w, UI.pocketSlot.h);
                 }
                 ctx.restore();
             }
@@ -862,12 +866,15 @@
                     if (origin === 'scavenge') { addLog("Secure the utility card first!", true); }
                     else {
                         UI.inventorySlots.forEach((s, i) => {
-                            if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.inventory[i] && state.inventory[i].suit === 'SPADES') {
-                                state.inventory[i].usesLeft = 2; addLog("Weapon optimised for dual use."); placed = true;
+                            if (m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h && state.inventory[i] && (state.inventory[i].suit === 'SPADES' || state.inventory[i].specialName === 'The Axe')) {
+                                state.inventory[i].usesLeft = 2; addLog("Asset optimised for dual use."); placed = true;
                             }
                         });
                         if (!placed && m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h && state.storage && state.storage.suit === 'SPADES') {
                             state.storage.usesLeft = 2; addLog("Stored weapon optimised."); placed = true;
+                        }
+                        if (!placed && m.x > UI.pocketSlot.x && m.x < UI.pocketSlot.x + UI.pocketSlot.w && m.y > UI.pocketSlot.y && m.y < UI.pocketSlot.y + UI.pocketSlot.h && state.pocket && state.pocket.specialName === 'The Axe') {
+                            state.pocket.usesLeft = 2; addLog("The Axe optimised while in pocket."); placed = true;
                         }
                     }
                 }
@@ -890,7 +897,7 @@
                 }
             });
             if (!placed && m.x > UI.discardSlot.x - 20 && m.x < UI.discardSlot.x + UI.discardSlot.w + 20 && m.y > UI.discardSlot.y - 20 && m.y < UI.discardSlot.y + UI.discardSlot.h + 20) {
-                if (card.suit === 'CLUBS' || card.isSpecial) addLog("Can't scrap a threat!", true);
+                if (card.suit === 'CLUBS' || (card.isSpecial && card.suit === 'CLUBS')) addLog("Can't scrap a threat!", true);
                 else if (origin !== 'scavenge') { addLog("Scrapped."); placed = true; }
                 else addLog("Pick up item first!", true);
             }
@@ -927,12 +934,12 @@
             if (!placed) {
                 UI.inventorySlots.forEach((s, i) => {
                     if (!placed && m.x > s.x && m.x < s.x + s.w && m.y > s.y && m.y < s.y + s.h) {
-                        if (card.suit === 'CLUBS' || card.isSpecial) addLog("Zombie held hands!", true);
+                        if (card.suit === 'CLUBS' || (card.isSpecial && card.suit === 'CLUBS')) addLog("Zombie held hands!", true);
                         else if (!state.inventory[i]) { state.inventory[i] = card; placed = true; }
                     }
                 });
                 if (!placed && m.x > UI.storageSlot.x && m.x < UI.storageSlot.x + UI.storageSlot.w && m.y > UI.storageSlot.y && m.y < UI.storageSlot.y + UI.storageSlot.h) {
-                    if (card.suit === 'CLUBS' || card.isSpecial) addLog("Zombie in pack!", true);
+                    if (card.suit === 'CLUBS' || (card.isSpecial && card.suit === 'CLUBS')) addLog("Zombie in pack!", true);
                     else if (card.suit === 'SPADES') addLog("No room for weapons.", true);
                     else if (!state.storage) { state.storage = card; placed = true; }
                 }
