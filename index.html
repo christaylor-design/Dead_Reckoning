@@ -223,6 +223,7 @@
 
         <canvas id="gameCanvas"></canvas>
 
+        <!-- Overlays -->
         <div id="ui-overlay">
             <h1 id="overlay-title" class="zombie-font">MISSION FAILED</h1>
             <p id="overlay-msg">The colony has fallen.</p>
@@ -342,7 +343,7 @@
             logColor: "#0f0",
             radExposure: 3,
             pillsActive: false,
-            isDevMode: true 
+            isDevMode: false // Default to false
         };
 
         const UI_COORDS = {
@@ -419,12 +420,14 @@
         }
 
         function checkDevMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('dev')) state.isDevMode = true;
             const dt = document.getElementById('dev-tools');
             if (dt) dt.style.display = state.isDevMode ? 'flex' : 'none';
         }
 
         function applyMusicState() {
-            if (state.musicEnabled) bgMusic.play().catch(e => console.log("Music ready."));
+            if (state.musicEnabled) bgMusic.play().catch(e => console.log("Audio waiting for interaction..."));
             else bgMusic.pause();
         }
 
@@ -767,6 +770,7 @@
         // --- HANDLERS ---
         function toggleInstructions(show) { instructionsOverlay.style.display = show ? 'flex' : 'none'; if (show) state.showSettings = false; }
         function toggleSettings(show) { state.showSettings = show; if (show) toggleInstructions(false); }
+        function checkLoaded() { if (++loadedCount === 12) { state.imagesLoaded = true; requestAnimationFrame(gameLoop); } }
 
         function handleStart(e) {
             const m = getEventPos(e); state.mouse = m;
@@ -878,8 +882,6 @@
         
         function gameLoop() { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, UI_RES.w, UI_RES.h); drawUI(); requestAnimationFrame(gameLoop); }
         
-        function checkLoaded() { if (++loadedCount === 12) { state.imagesLoaded = true; requestAnimationFrame(gameLoop); } }
-
         function init() {
             checkDevMode(); loadProgression(); resize(); 
             const toLoad = [imgBg, imgCards, imgRunBtn, imgLvlScreen, imgPills, imgRat, imgAxe, imgArmoured, imgBlind, imgQueen, imgBackswing, imgVictory];
